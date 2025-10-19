@@ -1,0 +1,87 @@
+# CMake构建目录
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+CMakeOutput.log
+CMakeError.log
+
+# 编译产物
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.out
+*.app
+
+# 调试文件
+*.dSYM/
+*.pdb
+*.idb
+*.ilk
+*.db
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+
+# 备份文件
+*.bak
+*.backup
+
+# 包管理文件
+conanbuildinfo.*
+conaninfo.txt
+
+# 测试覆盖率报告
+*.gcda
+*.gcno
+*.gcov
+
+# 预编译头文件
+*.gch
+*.pch
+
+# 依赖目录
+deps/
+third_party/
+external/
+
+# 文档生成
+docs/_build/
+html/
+latex/
+
+# 特定于项目的忽略
+# 可执行文件（根据你的项目名称调整）
+hfc
+pfuzzer/hfc
+
+# 特定于fuzzer的忽略
+*.cur_input
+*.crash
+*.timeout
+*.hang
+corpus/
+crashes/
+hangs/
