@@ -1,20 +1,28 @@
 #include "Handler.hpp"
+#include <Poco/JSON/Object.h>
+#include <Poco/JSON/Parser.h>
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <Poco/JSON/Parser.h>
-#include <Poco/JSON/Object.h>
+
+namespace webcore {
+
+static void ReportCorpus(HTTPServerRequest &request, HTTPServerResponse &response);
+
+RequestHandler::RequestHandler() {
+  postHandlers["/reportCorpus"] = ReportCorpus;
+}
+
+/*****===========================================================*****/
 
 static std::string getBody(HTTPServerRequest &request) {
   auto &istr = request.stream();
-  return std::string((std::istreambuf_iterator<char>(istr)),
-                     std::istreambuf_iterator<char>());
+  return std::string((std::istreambuf_iterator<char>(istr)), std::istreambuf_iterator<char>());
 }
 
-static void ReportCorpus(HTTPServerRequest &request,
-                         HTTPServerResponse &response) {
+static void ReportCorpus(HTTPServerRequest &request, HTTPServerResponse &response) {
   auto body = getBody(request);
-  
+
   try {
     Poco::JSON::Parser parser;
     Poco::Dynamic::Var result = parser.parse(body);
@@ -29,7 +37,6 @@ static void ReportCorpus(HTTPServerRequest &request,
     for (const auto &c : *corpus) {
       std::cout << "corpus: " << c.toString() << std::endl;
     }
-
   } catch (const Poco::Exception &e) {
     std::cerr << "JSON parsing error: " << e.displayText() << std::endl;
     response.setStatus(HTTPResponse::HTTP_BAD_REQUEST);
@@ -47,12 +54,7 @@ static void ReportCorpus(HTTPServerRequest &request,
   ostr << "OK\n";
 }
 
-RequestHandler::RequestHandler() {
-  postHandlers["/reportCorpus"] = ReportCorpus;
-}
-
-void RequestHandler::handleRequest(HTTPServerRequest &request,
-                                   HTTPServerResponse &response) {
+void RequestHandler::handleRequest(HTTPServerRequest &request, HTTPServerResponse &response) {
   auto &method = request.getMethod();
   if (method == HTTPRequest::HTTP_GET) {
     handleGetRequest(request, response);
@@ -67,8 +69,7 @@ void RequestHandler::handleRequest(HTTPServerRequest &request,
   }
 }
 
-void RequestHandler::handlePostRequest(HTTPServerRequest &request,
-                                       HTTPServerResponse &response) {
+void RequestHandler::handlePostRequest(HTTPServerRequest &request, HTTPServerResponse &response) {
   if (postHandlers.find(request.getURI()) != postHandlers.end()) {
     postHandlers[request.getURI()](request, response);
   } else {
@@ -80,8 +81,7 @@ void RequestHandler::handlePostRequest(HTTPServerRequest &request,
   }
 }
 
-void RequestHandler::handleGetRequest(HTTPServerRequest &request,
-                                      HTTPServerResponse &response) {
+void RequestHandler::handleGetRequest(HTTPServerRequest &request, HTTPServerResponse &response) {
   if (getHandlers.find(request.getURI()) != getHandlers.end()) {
     getHandlers[request.getURI()](request, response);
   } else {
@@ -93,7 +93,8 @@ void RequestHandler::handleGetRequest(HTTPServerRequest &request,
   }
 }
 
-HTTPRequestHandler *
-RequestHandlerFactory::createRequestHandler(const HTTPServerRequest &) {
+HTTPRequestHandler *RequestHandlerFactory::createRequestHandler(const HTTPServerRequest &) {
   return new RequestHandler;
 }
+
+} // namespace webcore

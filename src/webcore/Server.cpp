@@ -2,6 +2,8 @@
 #include "Handler.hpp"
 #include <iostream>
 
+namespace webcore {
+
 int Server::main(const std::vector<std::string> &args) {
   Poco::UInt16 port = 8080;
   Poco::Net::ServerSocket svs(port);
@@ -20,3 +22,5 @@ int Server::main(const std::vector<std::string> &args) {
 
   return Application::EXIT_OK;
 }
+
+} // namespace webcore
