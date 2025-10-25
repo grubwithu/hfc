@@ -35,6 +35,11 @@ struct NodeLabel {
     if (file.empty()) {
       file = extract(label, R"(\\\"file\\\": \\\"(.*?)\\\")");
     }
+
+    if (id.find("Entry") != id.npos) {
+      std::cout << func << " at " << line << ":" << column << " in " << file << std::endl;
+    }
+    
   }
 
   NodeLabel() { }

@@ -1,11 +1,16 @@
 #include "webcore/Server.hpp"
 #include "icfg/Icfg.hpp"
+#include "pfuzzer/FuzzerDefs.h"
+#include "pfuzzer/FuzzerPlatform.h"
 #include <iostream>
 #include <string>
 
 static std::string parseCommandLineArgs(int argc, char** argv);
+extern "C" {
+    int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size);
+}
 
-int main(int argc, char **argv) {
+ATTRIBUTE_INTERFACE int main(int argc, char **argv) {
     // Parse command line arguments
     std::string filePath = parseCommandLineArgs(argc, argv);
     
@@ -19,6 +24,9 @@ int main(int argc, char **argv) {
 
     // Initialize ICFG with the specified file path
     icfg::initProgramIcfg(filePath);
+
+    fuzzer::FuzzerDriver(0, nullptr, LLVMFuzzerTestOneInput);
+
 
     webcore::Server app;
     return app.run(argc, argv);

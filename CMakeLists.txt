@@ -8,7 +8,7 @@ file(GLOB WEBCORE_SRC_FILES "src/webcore/*.cpp")
 file(GLOB PFUZZER_SRC_FILES "src/pfuzzer/*.cpp")
 file(GLOB ICFG_SRC_FILES "src/icfg/*.cpp")
 
-add_executable(${PROJECT_NAME}
+add_library(${PROJECT_NAME}
   src/Main.cpp
   ${WEBCORE_SRC_FILES}
   ${PFUZZER_SRC_FILES}
@@ -19,7 +19,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/src)
 
 find_package(Poco REQUIRED Net Util Foundation XML JSON)
 target_link_libraries(${PROJECT_NAME}
-  PRIVATE
+  PUBLIC
     Poco::Net
     Poco::Util
     Poco::Foundation
