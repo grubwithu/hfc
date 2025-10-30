@@ -1,4 +1,5 @@
 #include "Handler.hpp"
+#include "pfuzzer/FuzzerFork.h"
 #include "pfuzzer/FuzzerDefs.h"
 #include "pfuzzer/FuzzerPlatform.h"
 #include <Poco/JSON/Object.h>
@@ -14,10 +15,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size);
 
 namespace webcore {
 
-static void ReportCorpus(HTTPServerRequest &request, HTTPServerResponse &response);
+static void reportCorpus(HTTPServerRequest &request, HTTPServerResponse &response);
 
 RequestHandler::RequestHandler() {
-  postHandlers["/reportCorpus"] = ReportCorpus;
+  postHandlers["/reportCorpus"] = reportCorpus;
 }
 
 /*****===========================================================*****/
@@ -27,7 +28,19 @@ static std::string getBody(HTTPServerRequest &request) {
   return std::string((std::istreambuf_iterator<char>(istr)), std::istreambuf_iterator<char>());
 }
 
-static void ReportCorpus(HTTPServerRequest &request, HTTPServerResponse &response) {
+static int corpusCallback(const void* data) {
+  using namespace fuzzer;
+  
+  std::cout << "Trap in call back!" << std::endl;
+
+  // This is dangerous. Maybe there are some safer way.
+  auto globalCorpus = static_cast<const GlobalCorpusInfo*>(data);
+  globalCorpus->PrintSeeds();
+
+  return 0;
+}
+
+static void reportCorpus(HTTPServerRequest &request, HTTPServerResponse &response) {
   auto body = getBody(request);
 
   try {
@@ -57,16 +70,20 @@ static void ReportCorpus(HTTPServerRequest &request, HTTPServerResponse &respons
       return;
     }
 
-    int argc = corpus->size() + 1;
+    int argc = corpus->size() + 3;
     char **argv = new char*[argc];
-    argv[0] = tmpPath;
+    char argv0[] = "", argv1[] = "-fork=1";
+    size_t begin = 0;
+    argv[begin++] = argv0;
+    argv[begin++] = argv1;
+    argv[begin++] = tmpPath;
     for (size_t i = 0; i < corpus->size(); i++) {
-      argv[i + 1] = const_cast<char*>(corpus->get(i).toString().c_str());
+      argv[i + begin] = const_cast<char*>(corpus->get(i).toString().c_str());
     }
-    fuzzer::FuzzerDriver(&argc, &argv, LLVMFuzzerTestOneInput);
+    fuzzer::FuzzerDriver(&argc, &argv, LLVMFuzzerTestOneInput, corpusCallback);
     delete[] argv;
     rmdir(tmpPath);
-    
+
   } catch (const Poco::Exception &e) {
     std::cerr << "JSON parsing error: " << e.displayText() << std::endl;
     response.setStatus(HTTPResponse::HTTP_BAD_REQUEST);

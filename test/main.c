@@ -40,7 +40,7 @@ int LLVMFuzzerTestOneInput(const char *Data, unsigned int Size) {
         int a = Data[1];
         int b = Data[2];
         int r = op == 0 ? add(a, b) : mul(a, b);
-        return r;
+        return 0;
     }
 }
 

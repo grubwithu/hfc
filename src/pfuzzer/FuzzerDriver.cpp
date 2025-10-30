@@ -42,6 +42,8 @@ extern "C" void __libfuzzer_is_present() {}
 extern "C" __attribute__((used)) void __libfuzzer_is_present() {}
 #endif  // LIBFUZZER_MSVC
 
+extern bool hfcRunning;
+
 namespace fuzzer {
 
 // Program arguments.
@@ -664,7 +666,7 @@ ReadCorpora(const std::vector<std::string> &CorpusDirs,
   return SizedFiles;
 }
 
-int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
+int FuzzerDriver(int *argc, char ***argv, UserCallback Callback, CorpusCallbak CorpusCallback) {
   using namespace fuzzer;
   assert(argc && argv && "Argument pointers cannot be nullptr");
   std::string Argv0((*argv)[0]);
@@ -835,7 +837,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Random Rand(Seed);
   auto *MD = new MutationDispatcher(Rand, Options);
   auto *Corpus = new InputCorpus(Options.OutputCorpus, Entropic);
-  auto *F = new Fuzzer(Callback, *Corpus, *MD, Options);
+  auto *F = hfcRunning ? nullptr : new Fuzzer(Callback, *Corpus, *MD, Options);
 
   for (auto &U: Dictionary)
     if (U.size() <= Word::GetMaxSize())
@@ -898,9 +900,14 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Options.ForkCorpusGroups = Flags.fork_corpus_groups;
   std::vector<std::string> Fuzzers = ParseFuzzers(Flags.fuzzers);
   //Printf("Fuzzers: 111\n");
-  if (Flags.fork)
-    FuzzWithFork(F->GetMD().GetRand(), Options, Args, *Inputs, Flags.fork, Callback, Fuzzers);
-  // TODO: Return directly and return info to webcore handler.
+  if (Flags.fork) {
+    FuzzWithFork(MD->GetRand(), Options, Args, *Inputs, Flags.fork, Callback, Fuzzers, CorpusCallback);
+    // Return directly and return info to webcore handler.
+    if (hfcRunning) {
+      return 0;
+    }
+  }
+    
 
   if (Flags.merge || Flags.set_cover_merge)
     Merge(F, Options, Args, *Inputs, Flags.merge_control_file);

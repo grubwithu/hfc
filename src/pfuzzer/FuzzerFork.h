@@ -38,7 +38,8 @@ void FuzzWithFork(Random &Rand, const FuzzingOptions &Options,
                   const std::vector<std::string> &Args,
                   const std::vector<std::string> &CorpusDirs,
                   int NumJobs, UserCallback Callback,
-                  std::vector<std::string> Fuzzers);
+                  std::vector<std::string> Fuzzers,
+                  CorpusCallbak CorpusCallback = nullptr);
 
 struct Stats {
   size_t number_of_executed_units = 0;
@@ -483,6 +484,14 @@ public:
         }
         //std::cout << "Total Job Seeds Selected: " << JobSeeds.size() << std::endl;
         return JobSeeds;
+    }
+
+    void PrintSeeds() const {
+        for (auto SI : Inputs) {
+            for (auto TE : SI->SeedPCs) {
+                PrintPC("%p %F %L\n", "%p\n", TE->PC);
+            }
+        }
     }
 
   private:

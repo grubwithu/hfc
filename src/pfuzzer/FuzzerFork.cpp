@@ -26,6 +26,8 @@
 #include <sstream>
 #include <thread>
 
+extern bool hfcRunning;
+
 namespace fuzzer {
 
 
@@ -355,7 +357,8 @@ void FuzzWithFork(Random &Rand, const FuzzingOptions &Options,
                   const std::vector<std::string> &Args,
                   const std::vector<std::string> &CorpusDirs, 
                   int NumJobs, UserCallback Callback,
-                  std::vector<std::string> Fuzzers) {
+                  std::vector<std::string> Fuzzers,
+                  CorpusCallbak CorpusCallback) {
   Printf("INFO: -fork=%d: fuzzing in separate process(s)\n", NumJobs);
 
   GlobalEnv Env;
@@ -412,7 +415,7 @@ void FuzzWithFork(Random &Rand, const FuzzingOptions &Options,
   else
     Env.MainCorpusDir = CorpusDirs[0];
 
-  if (Options.KeepSeed) {
+  if (Options.KeepSeed || hfcRunning) {
     for (auto &File : SeedFiles)
       Env.Files.push_back(File.File);
   } else {
@@ -482,7 +485,15 @@ void FuzzWithFork(Random &Rand, const FuzzingOptions &Options,
     }
   }
 
-  // TODO: Return Corpus Information
+  // Return Corpus Information
+  if (hfcRunning) {
+    if (CorpusCallback) {
+      CorpusCallback(GlobalCorpus);
+    }
+    delete GlobalCorpus;
+    delete AllArgsInfo;
+    return;
+  }
 
   if (Env.Group) {
     for (auto &path : Env.Files)

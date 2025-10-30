@@ -1,21 +1,39 @@
 #include "icfg/Icfg.hpp"
-#include "webcore/Server.hpp"
+#include "pfuzzer/FuzzerDefs.h"
 #include "pfuzzer/FuzzerPlatform.h"
+#include "webcore/Server.hpp"
 #include <iostream>
 #include <string>
 
-static std::string parseCommandLineArgs(int argc, char **argv);
+extern "C" {
+int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size);
+}
+
+struct StartOption {
+  bool runPfuzzer = false;
+  std::string filePath;
+};
+
+static StartOption parseCommandLineArgs(int argc, char **argv);
+bool hfcRunning = true;
 
 ATTRIBUTE_INTERFACE int main(int argc, char **argv) {
   // Parse command line arguments
-  std::string filePath = parseCommandLineArgs(argc, argv);
+  auto option = parseCommandLineArgs(argc, argv);
+  
+  if (option.runPfuzzer) {
+    fuzzer::FuzzerDriver(&argc, &argv, LLVMFuzzerTestOneInput);
+    hfcRunning = false;
+    return 0;
+  }
 
   // If file path is specified, display information
+  auto& filePath = option.filePath;
   if (!filePath.empty()) {
     std::cout << "Processing file: " << filePath << std::endl;
   } else {
     std::cout << "No file path specified, using default configuration" << std::endl;
-    filePath = "default.dot";
+    filePath = "test/icfg_initial.dot";
   }
 
   // Initialize ICFG with the specified file path
@@ -26,9 +44,8 @@ ATTRIBUTE_INTERFACE int main(int argc, char **argv) {
 }
 
 // Simple command line argument parser
-static std::string parseCommandLineArgs(int argc, char **argv) {
-  std::string filePath;
-
+static StartOption parseCommandLineArgs(int argc, char **argv) {
+  StartOption opt;
   // Iterate through all arguments
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -37,7 +54,7 @@ static std::string parseCommandLineArgs(int argc, char **argv) {
     if (arg == "-f") {
       // Ensure there's a next argument
       if (i + 1 < argc) {
-        filePath = argv[i + 1];
+        opt.filePath = argv[i + 1];
         i++; // Skip the next argument (file path)
       } else {
         std::cerr << "Error: -f parameter requires a file path" << std::endl;
@@ -52,6 +69,10 @@ static std::string parseCommandLineArgs(int argc, char **argv) {
       std::cout << "  -h, --help       Show this help message" << std::endl;
       exit(0);
     }
+    // Check if it's pfuzzer
+    else if (arg == "--run-pfuzzer") {
+      opt.runPfuzzer = true;
+    }
     // Handle unknown parameters
     else if (arg[0] == '-') {
       std::cerr << "Error: Unknown parameter '" << arg << "'" << std::endl;
@@ -60,5 +81,5 @@ static std::string parseCommandLineArgs(int argc, char **argv) {
     }
   }
 
-  return filePath;
+  return opt;
 }

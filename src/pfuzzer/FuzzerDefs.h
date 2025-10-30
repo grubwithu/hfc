@@ -41,8 +41,9 @@ extern ExternalFunctions *EF;
 typedef std::vector<uint8_t> Unit;
 typedef std::vector<Unit> UnitVector;
 typedef int (*UserCallback)(const uint8_t *Data, size_t Size);
+typedef int (*CorpusCallbak)(const void *Data);
 
-int FuzzerDriver(int *argc, char ***argv, UserCallback Callback);
+int FuzzerDriver(int *argc, char ***argv, UserCallback Callback, CorpusCallbak CorpusCallback = nullptr);
 
 uint8_t *ExtraCountersBegin();
 uint8_t *ExtraCountersEnd();
