@@ -1,9 +1,16 @@
 #include "Handler.hpp"
+#include "pfuzzer/FuzzerDefs.h"
+#include "pfuzzer/FuzzerPlatform.h"
 #include <Poco/JSON/Object.h>
 #include <Poco/JSON/Parser.h>
 #include <iostream>
+#include <cstdlib>
 #include <sstream>
 #include <string>
+
+extern "C" {
+int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size);
+}
 
 namespace webcore {
 
@@ -35,8 +42,31 @@ static void ReportCorpus(HTTPServerRequest &request, HTTPServerResponse &respons
     std::cout << "fuzzer: " << fuzzer << std::endl;
     std::cout << "identity: " << identity << std::endl;
     for (const auto &c : *corpus) {
+      // TODO: Only directory supported currently.
       std::cout << "corpus: " << c.toString() << std::endl;
     }
+
+    char tmpPath[] = "/tmp/hfcXXXXXXX";
+    if (mkdtemp(tmpPath) == nullptr) {
+      std::cerr << "mkdtemp failed" << std::endl;
+      response.setStatus(HTTPResponse::HTTP_INTERNAL_SERVER_ERROR);
+      response.setContentType("text/plain");
+
+      std::ostream &ostr = response.send();
+      ostr << "Internal server error\n";
+      return;
+    }
+
+    int argc = corpus->size() + 1;
+    char **argv = new char*[argc];
+    argv[0] = tmpPath;
+    for (size_t i = 0; i < corpus->size(); i++) {
+      argv[i + 1] = const_cast<char*>(corpus->get(i).toString().c_str());
+    }
+    fuzzer::FuzzerDriver(&argc, &argv, LLVMFuzzerTestOneInput);
+    delete[] argv;
+    rmdir(tmpPath);
+    
   } catch (const Poco::Exception &e) {
     std::cerr << "JSON parsing error: " << e.displayText() << std::endl;
     response.setStatus(HTTPResponse::HTTP_BAD_REQUEST);

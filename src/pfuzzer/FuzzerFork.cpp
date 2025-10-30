@@ -482,6 +482,8 @@ void FuzzWithFork(Random &Rand, const FuzzingOptions &Options,
     }
   }
 
+  // TODO: Return Corpus Information
+
   if (Env.Group) {
     for (auto &path : Env.Files)
       Env.FilesSizes.push_back(FileSize(path));

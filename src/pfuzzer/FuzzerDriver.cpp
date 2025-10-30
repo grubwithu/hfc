@@ -900,6 +900,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   //Printf("Fuzzers: 111\n");
   if (Flags.fork)
     FuzzWithFork(F->GetMD().GetRand(), Options, Args, *Inputs, Flags.fork, Callback, Fuzzers);
+  // TODO: Return directly and return info to webcore handler.
 
   if (Flags.merge || Flags.set_cover_merge)
     Merge(F, Options, Args, *Inputs, Flags.merge_control_file);

@@ -1,8 +1,7 @@
 .PHONY: all
 
 all:
-	clang -S -emit-llvm -O0 -g main.c
-	opt -passes=dot-callgraph main.ll > /dev/null
+	${CC} -c -g -fsanitize=fuzzer-no-link main.c -o main.a
 
 clean:
-	rm main.ll *.dot .*.dot
+	rm -f main.ll *.dot .*.dot
