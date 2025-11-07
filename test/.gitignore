@@ -1,0 +1,8 @@
+*.profraw
+.env.rc
+fuzzerLogFile*
+*.out
+tmp/
+*.ll
+*.dot
+*.bc

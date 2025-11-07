@@ -1,0 +1,9 @@
+# Gitignore for Go project
+# Compiled files
+*.o
+*.a
+*.so
+*.dll
+
+build/
+
