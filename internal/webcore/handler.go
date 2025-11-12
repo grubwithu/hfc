@@ -1,28 +1,21 @@
 package webcore
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/grubwithu/hfc/internal/analysis"
 )
 
 func generateTaskID() (TaskID, error) {
-	bytes := make([]byte, 16)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return "", err
-	}
-	return TaskID(hex.EncodeToString(bytes)), nil
+	return TaskID(uuid.New().String()), nil
 }
 
 type ProcessResult struct {
-	ToDelete []string `json:"toDelete"`
-
-	Status string
+	ConstraintGroups []analysis.ConstraintGroup `json:"constraint_groups"`
+	Status           string
 }
 
 type TaskID string
@@ -41,36 +34,28 @@ type APIResponse struct {
 
 func (s *Server) processCorpus(taskID TaskID, report CorpusReport) {
 	if len(report.Corpus) == 0 {
-		s.results[taskID] = ProcessResult{
-			Status:   StatusFailed,
-			ToDelete: nil,
+		s.Results[taskID] = ProcessResult{
+			Status: StatusFailed,
 		}
 	} else {
 		if len(report.Corpus) > 1 {
 			fmt.Printf("Warning: multiple corpus items received for task %s. Only the first item will be processed.\n", taskID)
 		}
-		coverage, err := analysis.RunOnce(*s.programPath, report.Corpus[0])
+		coverage, err := analysis.RunOnce(*s.ProgramPath, report.Corpus[0])
 		if err != nil {
 			fmt.Printf("Error running analysis on corpus item %s for task %s: %v\n", report.Corpus[0], taskID, err)
-			s.results[taskID] = ProcessResult{
-				Status:   StatusFailed,
-				ToDelete: nil,
-			}
-		}
-		callTree, err := analysis.BuildCallTree(s.staticData)
-		if err != nil {
-			fmt.Printf("Error building call tree for task %s: %v\n", taskID, err)
-			s.results[taskID] = ProcessResult{
-				Status:   StatusFailed,
-				ToDelete: nil,
+			s.Results[taskID] = ProcessResult{
+				Status: StatusFailed,
 			}
 		}
 
-		callTree.OverlayWithCoverage(&coverage)
+		constraints := analysis.IdentifyImportantConstraints(s.CallTree, &coverage)
 
-		s.results[taskID] = ProcessResult{
-			Status:   StatusCompleted,
-			ToDelete: nil,
+		constraintGroups := analysis.GroupConstraintsByFunction(constraints, &coverage)
+
+		s.Results[taskID] = ProcessResult{
+			Status:           StatusCompleted,
+			ConstraintGroups: constraintGroups,
 		}
 
 	}
@@ -100,11 +85,11 @@ func (s *Server) handleReportCorpus(c *gin.Context) {
 		return
 	}
 
-	s.mutex.Lock()
-	s.results[taskID] = ProcessResult{
+	s.Mutex.Lock()
+	s.Results[taskID] = ProcessResult{
 		Status: StatusProcessing,
 	}
-	s.mutex.Unlock()
+	s.Mutex.Unlock()
 
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -118,9 +103,9 @@ func (s *Server) handleReportCorpus(c *gin.Context) {
 func (s *Server) handlePeekResult(c *gin.Context) {
 	taskID := TaskID(c.Param("taskId"))
 
-	s.mutex.Lock()
-	result, exists := s.results[taskID]
-	s.mutex.Unlock()
+	s.Mutex.Lock()
+	result, exists := s.Results[taskID]
+	s.Mutex.Unlock()
 
 	if !exists {
 		c.JSON(http.StatusNotFound, APIResponse{
@@ -136,7 +121,7 @@ func (s *Server) handlePeekResult(c *gin.Context) {
 		Data:    result,
 	})
 
-	s.mutex.Lock()
-	delete(s.results, taskID)
-	defer s.mutex.Unlock()
+	s.Mutex.Lock()
+	delete(s.Results, taskID)
+	defer s.Mutex.Unlock()
 }

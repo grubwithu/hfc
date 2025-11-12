@@ -20,6 +20,8 @@ type FunctionCoverage struct {
 }
 
 type ProgramCoverageData struct {
+	CorpusCount int
+
 	// Files
 	Functions []FunctionCoverage `json:"functions"`
 	// totals
@@ -102,6 +104,13 @@ func RunOnce(programPath string, corpusPath string) (ProgramCoverageData, error)
 	if len(programCoverageFile.Data) > 1 {
 		fmt.Println("Attention: more than one ProgramCoverageData found in the JSON file")
 	}
+
+	// 6. Get the number of files in corpusPath
+	dirEntries, err := os.ReadDir(corpusPath)
+	if err != nil {
+		return ProgramCoverageData{}, fmt.Errorf("failed to read corpus directory: %w", err)
+	}
+	programCoverageFile.Data[0].CorpusCount = len(dirEntries)
 
 	return programCoverageFile.Data[0], nil
 }

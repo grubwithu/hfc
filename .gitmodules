@@ -1,0 +1,3 @@
+[submodule "test/libpng"]
+	path = test/libpng
+	url = https://github.com/pnggroup/libpng.git

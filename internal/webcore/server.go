@@ -15,36 +15,36 @@ const (
 )
 
 type Server struct {
-	router *gin.Engine
-	port   int
+	Router *gin.Engine
+	Port   int
 
-	programPath *string
-	staticData  *analysis.ProgramStaticData
+	ProgramPath *string
+	CallTree    *analysis.CallTree
 
-	mutex   sync.Mutex // mutex for results
-	results map[TaskID]ProcessResult
+	Mutex   sync.Mutex // mutex for results
+	Results map[TaskID]ProcessResult
 }
 
-func NewServer(port int, programPath *string, staticData *analysis.ProgramStaticData) *Server {
+func NewServer(port int, programPath *string, callTree *analysis.CallTree) *Server {
 	router := gin.Default()
 	server := &Server{
-		router:      router,
-		port:        port,
-		programPath: programPath,
-		staticData:  staticData,
-		results:     make(map[TaskID]ProcessResult),
+		Router:      router,
+		Port:        port,
+		ProgramPath: programPath,
+		CallTree:    callTree,
+		Results:     make(map[TaskID]ProcessResult),
 	}
 	server.setupRoutes()
 	return server
 }
 
 func (s *Server) setupRoutes() {
-	s.router.POST("/reportCorpus", s.handleReportCorpus)
-	s.router.GET("/peekResult/:taskId", s.handlePeekResult)
+	s.Router.POST("/reportCorpus", s.handleReportCorpus)
+	s.Router.GET("/peekResult/:taskId", s.handlePeekResult)
 }
 
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.port)
+	addr := fmt.Sprintf(":%d", s.Port)
 	fmt.Printf("Starting HTTP server on %s\n", addr)
-	return s.router.Run(addr)
+	return s.Router.Run(addr)
 }
