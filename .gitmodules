@@ -1,3 +1,6 @@
 [submodule "test/libpng"]
 	path = test/libpng
 	url = https://github.com/pnggroup/libpng.git
+[submodule "pfuzzer"]
+	path = pfuzzer
+	url = https://github.com/grubwithu/pfuzzer
