@@ -62,7 +62,7 @@ func (s *Server) processCorpus(taskID TaskID, report CorpusReport) {
 }
 
 type ReportCorpusResponse struct {
-	TaskID TaskID `json:"taskId"`
+	TaskID TaskID `json:"task_id"`
 }
 
 func (s *Server) handleReportCorpus(c *gin.Context) {

@@ -16,9 +16,10 @@ rm -rf *
 export CXXFLAGS="-fsanitize=fuzzer-no-link -fuse-ld=gold -flto -g"
 export CFLAGS="-fsanitize=fuzzer-no-link -fuse-ld=gold -flto -g"
 
-../configure --disable-shared && FUZZ_INTROSPECTOR=1 make -j 
+../configure --disable-shared --prefix=$(pwd)/install && FUZZ_INTROSPECTOR=1 make -j && make install
 
 FUZZ_INTROSPECTOR=1 ${CC} -g -fsanitize=fuzzer -fuse-ld=gold -flto \
+  -I$(pwd)/install/include \
   ../contrib/oss-fuzz/libpng_read_fuzzer.cc \
   .libs/libpng16.a -lz -lm -lstdc++ \
   -o libpng_read_fuzzer
@@ -31,9 +32,10 @@ mkdir -p build-runtime
 cd build-runtime
 rm -rf *
 
-../configure --disable-shared && make -j 
+../configure --disable-shared --prefix=$(pwd)/install && make -j && make install
 
 ${CC} -fprofile-instr-generate -fcoverage-mapping -fsanitize=fuzzer -g \
+  -I$(pwd)/install/include \
   ../contrib/oss-fuzz/libpng_read_fuzzer.cc \
   .libs/libpng16.a -lz -lm -lstdc++ \
   -o libpng_read_fuzzer

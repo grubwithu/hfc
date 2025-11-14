@@ -22,7 +22,7 @@ Response Body:
   "success": true,
   "message": "Corpus report received successfully. Processing in background.",
   "data": {
-    "taskId": "554f3a04-01d8-4292-b55f-4b8fd06d6bed"
+    "task_id": "554f3a04-01d8-4292-b55f-4b8fd06d6bed"
   }
 }
 ```
