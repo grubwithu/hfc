@@ -1,8 +1,5 @@
 #!/bin/bash
 
-git submodule init
-git submodule update
-
 cd libpng
 git checkout ba980b8 
 
