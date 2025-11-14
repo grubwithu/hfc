@@ -38,5 +38,12 @@ ${CC} -fprofile-instr-generate -fcoverage-mapping -fsanitize=fuzzer -g \
   -I$(pwd)/install/include \
   ../contrib/oss-fuzz/libpng_read_fuzzer.cc \
   .libs/libpng16.a -lz -lm -lstdc++ \
+  -o libpng_read_fuzzer_cov
+
+${CC} -fsanitize=fuzzer-no-link -g \
+  -I$(pwd)/install/include \
+  ../contrib/oss-fuzz/libpng_read_fuzzer.cc \
+  ../../../pfuzzer/build/libfuzzer.a \
+  .libs/libpng16.a -lz -lm -lstdc++ \
   -o libpng_read_fuzzer
 
