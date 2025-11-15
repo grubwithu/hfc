@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"log"
 	"os"
 	"os/exec"
 
@@ -23,32 +23,29 @@ func main() {
 
 	// Show help information and exit if -h is provided
 	if *help || *programPath == "" || *profilePath == "" || *callTreePath == "" {
-		fmt.Println("Program Usage:")
+		log.Println("Program Usage:")
+		flag.CommandLine.SetOutput(os.Stdout)
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
 
 	// Check whether llvm-profdata and llvm-cov are installed
 	if _, err := exec.LookPath("llvm-profdata"); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: llvm-profdata is not installed\n")
-		return
+		log.Fatal("Error: llvm-profdata is not installed\n")
 	}
 	if _, err := exec.LookPath("llvm-cov"); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: llvm-cov is not installed\n")
-		return
+		log.Fatal("Error: llvm-cov is not installed\n")
 	}
 
 	// Parse the YAML file and get CallTree
 	staticData, err := analysis.ParseProfileFromYAML(*profilePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing YAML: %v\n", err)
-		return
+		log.Fatalf("Error parsing YAML: %v\n", err)
 	}
 
 	callTree, err := analysis.ParseCallTreeFromData(*callTreePath, staticData)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing call tree data: %v\n", err)
-		return
+		log.Fatalf("Error parsing call tree data: %v\n", err)
 	}
 
 	webServer := webcore.NewServer(*port, programPath, callTree)

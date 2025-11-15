@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,7 +50,7 @@ func RunOnce(programPath string, corpusPath string) (ProgramCoverageData, error)
 	// Clean up the temporary directory when done
 	defer func() {
 		if err := os.RemoveAll(workDir); err != nil {
-			fmt.Printf("Warning: failed to remove temporary directory %s: %v\n", workDir, err)
+			log.Printf("Warning: failed to remove temporary directory %s: %v\n", workDir, err)
 		}
 	}()
 
@@ -102,7 +103,7 @@ func RunOnce(programPath string, corpusPath string) (ProgramCoverageData, error)
 	}
 
 	if len(programCoverageFile.Data) > 1 {
-		fmt.Println("Attention: more than one ProgramCoverageData found in the JSON file")
+		log.Println("Attention: more than one ProgramCoverageData found in the JSON file")
 	}
 
 	// 6. Get the number of files in corpusPath

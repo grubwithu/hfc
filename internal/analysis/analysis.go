@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/google/uuid"
@@ -27,9 +28,10 @@ type ImportantConstraint struct {
 }
 
 type ConstraintGroup struct {
-	GroupId         string  `json:"group_id"`
-	MainFunction    string  `json:"function"`
-	TotalImportance float64 `json:"importance"`
+	GroupId         string     `json:"group_id"`
+	MainFunction    string     `json:"function"`
+	TotalImportance float64    `json:"importance"`
+	Paths           [][]string `json:"paths"`
 
 	Constraints []ImportantConstraint `json:"-"`
 }
@@ -157,6 +159,16 @@ func GroupConstraintsByFunction(constraints []ImportantConstraint, coverageData 
 	}
 	result := []ConstraintGroup{}
 	for _, group := range functionGroups {
+		for _, constraint := range group.Constraints {
+			path := make([]string, 0)
+			node := constraint.CallTreeNode.Parent
+			for node != nil {
+				path = append(path, node.FunctionProfile.FunctionName)
+				node = node.Parent
+			}
+			slices.Reverse(path)
+			group.Paths = append(group.Paths, path)
+		}
 		result = append(result, *group)
 	}
 	return result

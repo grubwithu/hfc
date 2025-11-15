@@ -2,6 +2,7 @@ package webcore
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -21,8 +22,10 @@ type Server struct {
 	ProgramPath *string
 	CallTree    *analysis.CallTree
 
-	Mutex   sync.Mutex // mutex for results
-	Results map[TaskID]ProcessResult
+	GlobalCoverageMutex   sync.Mutex // mutex for global function coverage
+	GlobalCoverage        *analysis.ProgramCoverageData
+	ConstraintGroupsMutex sync.Mutex // mutex for constraint groups
+	ConstraintGroups      []analysis.ConstraintGroup
 }
 
 func NewServer(port int, programPath *string, callTree *analysis.CallTree) *Server {
@@ -32,7 +35,6 @@ func NewServer(port int, programPath *string, callTree *analysis.CallTree) *Serv
 		Port:        port,
 		ProgramPath: programPath,
 		CallTree:    callTree,
-		Results:     make(map[TaskID]ProcessResult),
 	}
 	server.setupRoutes()
 	return server
@@ -40,11 +42,11 @@ func NewServer(port int, programPath *string, callTree *analysis.CallTree) *Serv
 
 func (s *Server) setupRoutes() {
 	s.Router.POST("/reportCorpus", s.handleReportCorpus)
-	s.Router.GET("/peekResult/:taskId", s.handlePeekResult)
+	s.Router.GET("/peekResult", s.handlePeekResult)
 }
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Port)
-	fmt.Printf("Starting HTTP server on %s\n", addr)
+	log.Printf("Starting HTTP server on %s\n", addr)
 	return s.Router.Run(addr)
 }

@@ -29,19 +29,20 @@ Response Body:
 
 
 ## GET
-### /peekResult/:taskId
+### /peekResult
 
 Response Body:
 ```json
 {
   "success": true,
-  "message": "Task status retrieved",
+  "message": "Constraint groups retrieved",
   "data": {
     "constraint_groups": [
       {
-        "group_id": "1",
-        "function": "main",
-        "total_importance": 100.0
+        "group_id": "1ca34b37-d225-4944-b981-ab74157e8842",
+        "function": "png_handle_sCAL",
+        "importance": 0.483546069753371,
+        "paths":[ ["LLVMFuzzerTestOneInput", "png_read_info"] ]
       }
     ]
   }
