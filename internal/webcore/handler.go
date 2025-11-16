@@ -3,6 +3,9 @@ package webcore
 import (
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -31,48 +34,47 @@ type CorpusReport struct {
 	Corpus   []string `json:"corpus"`
 }
 
-func (s *Server) processCorpus(taskID TaskID, report CorpusReport) {
-	if len(report.Corpus) >= 1 {
-		if len(report.Corpus) > 1 {
-			log.Printf("Warning: multiple corpus items received for task %s. Only the first item will be processed.\n", taskID)
-		}
-		coverage, err := analysis.RunOnce(*s.ProgramPath, report.Corpus[0])
-		if err != nil {
-			log.Printf("Error running analysis on corpus item %s for task %s: %v\n", report.Corpus[0], taskID, err)
-		}
+func (s *Server) processCorpus(taskID TaskID, corpus string) {
 
-		s.GlobalCoverageMutex.Lock()
-		if s.GlobalCoverage == nil {
-			s.GlobalCoverage = &coverage
-		} else {
-			s.GlobalCoverage.CorpusCount += coverage.CorpusCount
-			for _, funcCoverage := range coverage.Functions {
-				existing := false
-				for i := range s.GlobalCoverage.Functions {
-					if s.GlobalCoverage.Functions[i].Name == funcCoverage.Name {
-						s.GlobalCoverage.Functions[i].Count += funcCoverage.Count
-						existing = true
-						break
-					}
-				}
-				if !existing {
-					s.GlobalCoverage.Functions = append(s.GlobalCoverage.Functions, funcCoverage)
+	coverage, err := analysis.RunOnce(*s.ProgramPath, corpus)
+	if err != nil {
+		log.Printf("Error running analysis on corpus item %s for task %s: %v\n", corpus, taskID, err)
+	}
+
+	s.GlobalCoverageMutex.Lock()
+	if s.GlobalCoverage == nil {
+		s.GlobalCoverage = &coverage
+	} else {
+		s.GlobalCoverage.CorpusCount += coverage.CorpusCount
+		for _, funcCoverage := range coverage.Functions {
+			existing := false
+			for i := range s.GlobalCoverage.Functions {
+				if s.GlobalCoverage.Functions[i].Name == funcCoverage.Name {
+					s.GlobalCoverage.Functions[i].Count += funcCoverage.Count
+					existing = true
+					break
 				}
 			}
+			if !existing {
+				s.GlobalCoverage.Functions = append(s.GlobalCoverage.Functions, funcCoverage)
+			}
 		}
-
-		constrains := analysis.IdentifyImportantConstraints(s.CallTree, s.GlobalCoverage)
-		group := analysis.GroupConstraintsByFunction(constrains, s.GlobalCoverage)
-
-		s.GlobalCoverageMutex.Unlock()
-
-		s.ConstraintGroupsMutex.Lock()
-		s.ConstraintGroups = group
-		s.ConstraintGroupsMutex.Unlock()
-
-		log.Printf("Processed corpus item %s for task %s. Global corpus count: %d\n", report.Corpus[0], taskID, s.GlobalCoverage.CorpusCount)
-
 	}
+
+	constrains := analysis.IdentifyImportantConstraints(s.CallTree, s.GlobalCoverage)
+	groups := analysis.GroupConstraintsByFunction(constrains, s.GlobalCoverage)
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].TotalImportance > groups[j].TotalImportance
+	})
+
+	s.GlobalCoverageMutex.Unlock()
+
+	s.ConstraintGroupsMutex.Lock()
+	s.ConstraintGroups = groups
+	s.ConstraintGroupsMutex.Unlock()
+
+	log.Printf("Processed corpus item %s for task %s. Global corpus count: %d\n", corpus, taskID, s.GlobalCoverage.CorpusCount)
+
 }
 
 type ReportCorpusResponse struct {
@@ -98,6 +100,26 @@ func (s *Server) handleReportCorpus(c *gin.Context) {
 		return
 	}
 
+	// report.Corpus[0] is the path to the corpus file, print the tree of the directory
+	// print the tree of the directory
+	corpusDir, err := os.MkdirTemp("", "hfc_run_")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "Failed to create temporary directory",
+		})
+		return
+	}
+
+	for _, corpusItem := range report.Corpus {
+		log.Println("Copying corpus item", corpusItem, "to", corpusDir)
+		cmd := exec.Command("cp", "-r", corpusItem, corpusDir)
+		if err := cmd.Run(); err != nil {
+			log.Printf("Error copying corpus item %s to %s: %v\n", corpusItem, corpusDir, err)
+			continue
+		}
+	}
+
 	taskID, err := generateTaskID()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -107,7 +129,10 @@ func (s *Server) handleReportCorpus(c *gin.Context) {
 		return
 	}
 
-	go s.processCorpus(taskID, report)
+	go func() {
+		s.processCorpus(taskID, corpusDir)
+		defer os.RemoveAll(corpusDir)
+	}()
 
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,

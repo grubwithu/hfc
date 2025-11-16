@@ -107,7 +107,7 @@ func RunOnce(programPath string, corpusPath string) (ProgramCoverageData, error)
 	}
 
 	// 6. Get the number of files in corpusPath
-	dirEntries, err := os.ReadDir(corpusPath)
+	dirEntries, err := os.ReadDir(tempDir)
 	if err != nil {
 		return ProgramCoverageData{}, fmt.Errorf("failed to read corpus directory: %w", err)
 	}
