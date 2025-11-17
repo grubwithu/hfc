@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 cd libpng
 git checkout ba980b8 

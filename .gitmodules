@@ -4,3 +4,6 @@
 [submodule "pfuzzer"]
 	path = pfuzzer
 	url = https://github.com/grubwithu/pfuzzer
+[submodule "test/freetype2"]
+	path = test/freetype2
+	url = https://github.com/freetype/freetype.git
