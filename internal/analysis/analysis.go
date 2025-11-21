@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"math"
 	"slices"
 	"sort"
 
@@ -12,19 +13,21 @@ var (
 	MAX_CONSTRAINTS            = 10
 )
 var (
-	ALPHA = 0.25
-	BETA  = 0.25
-	GAMMA = 0.25
-	DELTA = 0.25
+	W_HitFreq    = 0.10
+	W_Rarity     = 0.20
+	W_Depth      = 0.20
+	W_Branch     = 0.35
+	W_Complexity = 0.15
 )
 
 type ImportantConstraint struct {
-	CallTreeNode       *CallTreeNode
-	HitFrequencyWeight float64
-	ComplexityWeight   float64
-	UncoveredWeight    float64
-	DepthWeight        float64
-	ImportanceScore    float64
+	CallTreeNode     *CallTreeNode
+	HitFreqWeight    float64
+	RarityWeight     float64
+	DepthWeight      float64
+	BranchWeight     float64
+	ComplexityWeight float64
+	ImportanceScore  float64
 }
 
 type ConstraintGroup struct {
@@ -36,101 +39,46 @@ type ConstraintGroup struct {
 	Constraints []ImportantConstraint `json:"-"`
 }
 
-func GetUncoveredFunctions(callTree *CallTree, coverageMap map[string]int) []*CallTreeNode {
-	result := []*CallTreeNode{}
-
-	var filter = func(nodes []*CallTreeNode) []*CallTreeNode {
-		var res []*CallTreeNode
-		for _, node := range nodes {
-			if coverageMap[node.FunctionProfile.FunctionName] > 0 {
-				res = append(res, node)
-			}
-		}
-		sort.Slice(res, func(i, j int) bool {
-			return coverageMap[res[i].FunctionProfile.FunctionName] < coverageMap[res[j].FunctionProfile.FunctionName]
-		})
-		return res
-	}
-
-	// use bfs to traverse the call tree
-	queue := []*CallTreeNode{}
-	queue = append(queue, filter(callTree.Root.Children)...)
-	for len(queue) > 0 {
-		queueCopy := queue
-		queue = []*CallTreeNode{}
-		for index, node := range queueCopy {
-			if index <= len(queue)/3 {
-				result = append(result, node)
-			} else {
-				queue = append(queue, filter(node.Children)...)
-			}
-		}
-	}
-	return result
-}
-
-func CalculateUncoveredComplexity(ctn *CallTreeNode, coverageMap map[string]int) int {
-	res := ctn.FunctionProfile.CyclomaticComplexity
-	for _, child := range ctn.Children {
-		res += CalculateUncoveredComplexity(child, coverageMap)
-	}
-	return res
-}
-
 func IdentifyImportantConstraints(callTree *CallTree, programCoverageData *ProgramCoverageData) []ImportantConstraint {
 	// create a map of function coverage
+	MAX_NUM_CHILDREN := len(callTree.Nodes) - 1
+	MIN_HITS := math.MaxInt
+	MAX_HITS := math.MinInt
+	covCdf := CDF{}
 	coverageMap := make(map[string]int)
 	for _, funcCoverage := range programCoverageData.Functions {
 		coverageMap[funcCoverage.Name] = funcCoverage.Count
+		covCdf.Add(float64(funcCoverage.Count))
+		if funcCoverage.Count < MIN_HITS {
+			MIN_HITS = funcCoverage.Count
+		}
+		if funcCoverage.Count > MAX_HITS {
+			MAX_HITS = funcCoverage.Count
+		}
 	}
-
-	// get the uncovered functions
-	uncoveredFuncs := GetUncoveredFunctions(callTree, coverageMap)
 
 	constraints := []ImportantConstraint{}
 
-	maxComplexity := -1
-	maxUncovered := -1
-	for _, uncoveredFunc := range uncoveredFuncs {
-		hitCount := coverageMap[uncoveredFunc.FunctionProfile.FunctionName]
-		hitFreqWeight := 1.0 / (1.0 + float64(hitCount)/float64(programCoverageData.CorpusCount))
-
-		complexity := uncoveredFunc.FunctionProfile.CyclomaticComplexity
-		complexityWeight := float64(complexity)
-		if complexity > maxComplexity {
-			maxComplexity = complexity
+	for _, node := range callTree.Nodes {
+		if node.FunctionProfile == nil || coverageMap[node.FunctionProfile.FunctionName] == 0 || node == callTree.Root {
+			continue
 		}
-
-		uncoveredComplexity := CalculateUncoveredComplexity(uncoveredFunc, coverageMap)
-		uncoveredWeight := float64(uncoveredComplexity)
-		if uncoveredComplexity > maxUncovered {
-			maxUncovered = uncoveredComplexity
+		constraint := ImportantConstraint{
+			CallTreeNode: node,
 		}
-
-		reachableDepth := uncoveredFunc.GetReachableDepth()
-		depthWeight := 1.0 / (1.0 + float64(reachableDepth))
-
-		constraints = append(constraints, ImportantConstraint{
-			CallTreeNode:       uncoveredFunc,
-			HitFrequencyWeight: hitFreqWeight,
-			ComplexityWeight:   complexityWeight,
-			UncoveredWeight:    uncoveredWeight,
-			DepthWeight:        depthWeight,
-		})
+		constraint.HitFreqWeight = (float64(coverageMap[node.FunctionProfile.FunctionName]) - float64(MIN_HITS)) / float64(MAX_HITS-MIN_HITS)
+		if constraint.HitFreqWeight >= 0.3 {
+			continue
+		}
+		constraint.HitFreqWeight = constraint.HitFreqWeight / 0.3
+		constraint.RarityWeight = 1.0 - covCdf.GetCDFValue(float64(coverageMap[node.FunctionProfile.FunctionName]))
+		constraint.DepthWeight = math.Sqrt(float64(node.GetUpperDepth()) / float64(callTree.MaxDepth))
+		constraint.BranchWeight = float64(node.CountDescendantNode()) / float64(MAX_NUM_CHILDREN)
+		constraint.ComplexityWeight = float64(node.FunctionProfile.CyclomaticComplexity) / float64(callTree.MaxCyclomaticComplexity)
+		constraint.ImportanceScore = W_HitFreq*constraint.HitFreqWeight + W_Rarity*constraint.RarityWeight + W_Depth*constraint.DepthWeight + W_Branch*constraint.BranchWeight + W_Complexity*constraint.ComplexityWeight
+		constraints = append(constraints, constraint)
 	}
 
-	// normalize the weights
-	for i := range constraints {
-		constraints[i].ComplexityWeight /= float64(maxComplexity)
-		constraints[i].UncoveredWeight /= float64(maxUncovered)
-
-		constraints[i].ImportanceScore = ALPHA*constraints[i].HitFrequencyWeight +
-			BETA*constraints[i].ComplexityWeight +
-			GAMMA*constraints[i].UncoveredWeight +
-			DELTA*constraints[i].DepthWeight
-	}
-
-	// sort constraints by importance score
 	sort.Slice(constraints, func(i, j int) bool {
 		return constraints[i].ImportanceScore > constraints[j].ImportanceScore
 	})

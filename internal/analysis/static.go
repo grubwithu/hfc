@@ -54,13 +54,23 @@ type CallTreeNode struct {
 }
 
 type CallTree struct {
-	Root  *CallTreeNode
-	Nodes map[string]*CallTreeNode
-
-	ProgramProfile *ProgramProfile
+	Root                    *CallTreeNode
+	Nodes                   []*CallTreeNode
+	MaxDepth                int
+	ProgramProfile          *ProgramProfile
+	MaxCyclomaticComplexity int
 }
 
-func (ctn *CallTreeNode) GetMaxDpeth() int {
+func (ctn *CallTreeNode) CountDescendantNode() int {
+	// use dfs to count the descendant node
+	count := 1
+	for _, child := range ctn.Children {
+		count += child.CountDescendantNode()
+	}
+	return count + len(ctn.Children)
+}
+
+func (ctn *CallTreeNode) GetMaxLowerDpeth() int {
 	// use bfs to get the max depth
 	maxDepth := 0
 	queue := []*CallTreeNode{ctn}
@@ -75,16 +85,19 @@ func (ctn *CallTreeNode) GetMaxDpeth() int {
 	return maxDepth
 }
 
-func (ctn *CallTreeNode) GetReachableDepth() int {
-	res := 0
-	// search up
+func (ctn *CallTreeNode) GetUpperDepth() int {
+	depth := 0
 	cur := ctn.Parent
 	for cur != nil {
-		res++
+		depth++
 		cur = cur.Parent
 	}
-	// search down
-	res += ctn.GetMaxDpeth()
+	return depth
+}
+
+func (ctn *CallTreeNode) GetReachableDepth() int {
+	res := ctn.GetUpperDepth()
+	res += ctn.GetMaxLowerDpeth()
 	return res + 1
 }
 
@@ -155,10 +168,10 @@ func ParseCallTreeFromData(filePath string, programProfile *ProgramProfile) (*Ca
 	rootNode := &CallTreeNode{
 		FunctionProfile: functions["LLVMFuzzerTestOneInput"],
 	}
-	nodes := map[string]*CallTreeNode{
-		"LLVMFuzzerTestOneInput": rootNode,
-	}
+	nodes := []*CallTreeNode{rootNode}
 	callStack := []*CallTreeNode{rootNode}
+	maxDepth := len(callStack)
+	maxCyclomaticComplexity := 0
 	for _, line := range lines[2:] {
 		if len(line) == 0 {
 			continue
@@ -177,7 +190,7 @@ func ParseCallTreeFromData(filePath string, programProfile *ProgramProfile) (*Ca
 		node := &CallTreeNode{
 			FunctionProfile: functions[funcName],
 		}
-		nodes[funcName] = node
+		nodes = append(nodes, node)
 		parent := callStack[prefixSpaceCount/2-1]
 		parent.Children = append(parent.Children, node)
 		node.Parent = parent
@@ -186,13 +199,16 @@ func ParseCallTreeFromData(filePath string, programProfile *ProgramProfile) (*Ca
 		} else {
 			callStack[prefixSpaceCount/2] = node
 		}
-
+		maxDepth = max(maxDepth, len(callStack))
+		maxCyclomaticComplexity = max(maxCyclomaticComplexity, node.FunctionProfile.CyclomaticComplexity)
 	}
 
 	return &CallTree{
-		Root:           rootNode,
-		Nodes:          nodes,
-		ProgramProfile: programProfile,
+		Root:                    rootNode,
+		Nodes:                   nodes,
+		MaxDepth:                maxDepth,
+		ProgramProfile:          programProfile,
+		MaxCyclomaticComplexity: maxCyclomaticComplexity,
 	}, nil
 
 }
