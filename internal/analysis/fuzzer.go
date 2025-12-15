@@ -107,16 +107,10 @@ func analyzeIfClause(condition *sitter.Node, sourceCode []byte) ConstraintType {
 	conditionCode := condition.Content(sourceCode)
 
 	// 分析条件表达式的内容
-	if strings.Contains(conditionCode, "==") || strings.Contains(conditionCode, "!=") ||
-		strings.Contains(conditionCode, ">") || strings.Contains(conditionCode, "<") ||
-		strings.Contains(conditionCode, ">=") || strings.Contains(conditionCode, "<=") {
-		return CT_VALUE_COMPARISON
-	}
-
-	if strings.Contains(conditionCode, "&") || strings.Contains(conditionCode, "|") ||
-		strings.Contains(conditionCode, "^") || strings.Contains(conditionCode, "~") ||
-		strings.Contains(conditionCode, "<<") || strings.Contains(conditionCode, ">>") {
-		return CT_BITWISE_OPERATION
+	if strings.Contains(conditionCode, "strcmp") || strings.Contains(conditionCode, "strstr") ||
+		strings.Contains(conditionCode, "strncmp") || strings.Contains(conditionCode, "memcmp") ||
+		strings.Contains(conditionCode, "\"") || strings.Contains(conditionCode, "'") {
+		return CT_STRING_MATCH
 	}
 
 	if strings.Contains(conditionCode, "+") || strings.Contains(conditionCode, "-") ||
@@ -125,10 +119,16 @@ func analyzeIfClause(condition *sitter.Node, sourceCode []byte) ConstraintType {
 		return CT_ARITHMETIC_OPERATION
 	}
 
-	if strings.Contains(conditionCode, "strcmp") || strings.Contains(conditionCode, "strstr") ||
-		strings.Contains(conditionCode, "strncmp") || strings.Contains(conditionCode, "memcmp") ||
-		strings.Contains(conditionCode, "\"") || strings.Contains(conditionCode, "'") {
-		return CT_STRING_MATCH
+	if strings.Contains(conditionCode, "&") || strings.Contains(conditionCode, "|") ||
+		strings.Contains(conditionCode, "^") || strings.Contains(conditionCode, "~") ||
+		strings.Contains(conditionCode, "<<") || strings.Contains(conditionCode, ">>") {
+		return CT_BITWISE_OPERATION
+	}
+
+	if strings.Contains(conditionCode, "==") || strings.Contains(conditionCode, "!=") ||
+		strings.Contains(conditionCode, ">") || strings.Contains(conditionCode, "<") ||
+		strings.Contains(conditionCode, ">=") || strings.Contains(conditionCode, "<=") {
+		return CT_VALUE_COMPARISON
 	}
 
 	return CT_COMPOUND_OPERATION
