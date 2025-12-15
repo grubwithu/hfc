@@ -34,46 +34,66 @@ type CorpusReport struct {
 	Corpus   []string `json:"corpus"`
 }
 
-func (s *Server) processCorpus(taskID TaskID, corpus string) {
+func (s *Server) processCorpus(taskID TaskID, fuzzer string, corpus string) {
 
-	coverage, err := analysis.RunOnce(*s.ProgramPath, corpus)
+	workDir, err := os.MkdirTemp("", "hfc_work_")
+	if err != nil {
+		log.Printf("Error creating temporary work directory: %v\n", err)
+		return
+	}
+	defer os.RemoveAll(workDir)
+	profdataPath, err := analysis.RunOnceForProfdata(workDir, *s.Executable, corpus)
+	if err != nil {
+		log.Printf("Error running analysis on corpus item %s for task %s: %v\n", corpus, taskID, err)
+		return
+	}
+	coverage, err := analysis.GetProgCov(workDir, *s.Executable, profdataPath)
 	if err != nil {
 		log.Printf("Error running analysis on corpus item %s for task %s: %v\n", corpus, taskID, err)
 	}
 
-	s.GlobalCoverageMutex.Lock()
-	if s.GlobalCoverage == nil {
-		s.GlobalCoverage = &coverage
+	s.GlobalCovMutex.Lock()
+	if s.GlobalCov == nil {
+		s.GlobalCov = &coverage
 	} else {
-		s.GlobalCoverage.CorpusCount += coverage.CorpusCount
+		s.GlobalCov.CorpusCount += coverage.CorpusCount
 		for _, funcCoverage := range coverage.Functions {
 			existing := false
-			for i := range s.GlobalCoverage.Functions {
-				if s.GlobalCoverage.Functions[i].Name == funcCoverage.Name {
-					s.GlobalCoverage.Functions[i].Count += funcCoverage.Count
+			for i := range s.GlobalCov.Functions {
+				if s.GlobalCov.Functions[i].Name == funcCoverage.Name {
+					s.GlobalCov.Functions[i].Count += funcCoverage.Count
 					existing = true
 					break
 				}
 			}
 			if !existing {
-				s.GlobalCoverage.Functions = append(s.GlobalCoverage.Functions, funcCoverage)
+				s.GlobalCov.Functions = append(s.GlobalCov.Functions, funcCoverage)
 			}
 		}
 	}
 
-	constrains := analysis.IdentifyImportantConstraints(s.CallTree, s.GlobalCoverage)
-	groups := analysis.GroupConstraintsByFunction(constrains, s.GlobalCoverage)
+	constrains := analysis.IdentifyImportantConstraints(s.CallTree, s.GlobalCov)
+	groups := analysis.GroupConstraintsByFunction(constrains, s.GlobalCov)
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].TotalImportance > groups[j].TotalImportance
 	})
 
-	s.GlobalCoverageMutex.Unlock()
+	s.GlobalCovMutex.Unlock()
 
 	s.ConstraintGroupsMutex.Lock()
 	s.ConstraintGroups = groups
 	s.ConstraintGroupsMutex.Unlock()
 
-	log.Printf("Processed corpus item %s for task %s. Global corpus count: %d\n", corpus, taskID, s.GlobalCoverage.CorpusCount)
+	lineCov, err := analysis.GetLineCov(workDir, *s.Executable, profdataPath)
+	if err != nil {
+		log.Printf("Error running analysis on corpus item %s for task %s: %v\n", corpus, taskID, err)
+		return
+	}
+
+	score := analysis.CalculateFuzzerScore(lineCov, s.FileLineCovs, s.AST)
+	log.Print(fuzzer, score)
+
+	log.Printf("Processed corpus item %s for task %s. Global corpus count: %d\n", corpus, taskID, s.GlobalCov.CorpusCount)
 
 }
 
@@ -130,7 +150,7 @@ func (s *Server) handleReportCorpus(c *gin.Context) {
 	}
 
 	go func() {
-		s.processCorpus(taskID, corpusDir)
+		s.processCorpus(taskID, report.Fuzzer, corpusDir)
 		defer os.RemoveAll(corpusDir)
 	}()
 

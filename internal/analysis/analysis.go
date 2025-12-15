@@ -39,14 +39,14 @@ type ConstraintGroup struct {
 	Constraints []ImportantConstraint `json:"-"`
 }
 
-func IdentifyImportantConstraints(callTree *CallTree, programCoverageData *ProgramCoverageData) []ImportantConstraint {
+func IdentifyImportantConstraints(callTree *CallTree, progCovData *ProgCovData) []ImportantConstraint {
 	// create a map of function coverage
 	MAX_NUM_CHILDREN := len(callTree.Nodes) - 1
 	MIN_HITS := math.MaxInt
 	MAX_HITS := math.MinInt
 	covCdf := CDF{}
 	coverageMap := make(map[string]int)
-	for _, funcCoverage := range programCoverageData.Functions {
+	for _, funcCoverage := range progCovData.Functions {
 		coverageMap[funcCoverage.Name] = funcCoverage.Count
 		covCdf.Add(float64(funcCoverage.Count))
 		if funcCoverage.Count < MIN_HITS {
@@ -91,7 +91,7 @@ func IdentifyImportantConstraints(callTree *CallTree, programCoverageData *Progr
 	return constraints[:cut]
 }
 
-func GroupConstraintsByFunction(constraints []ImportantConstraint, coverageData *ProgramCoverageData) []ConstraintGroup {
+func GroupConstraintsByFunction(constraints []ImportantConstraint, progCovData *ProgCovData) []ConstraintGroup {
 	functionGroups := map[string]*ConstraintGroup{}
 
 	for _, constraint := range constraints {

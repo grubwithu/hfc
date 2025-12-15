@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// Define command line arguments
-	programPath := flag.String("program", "", "Program path, format: -program=xx.out")
+	executablePath := flag.String("program", "", "Program executable path, format: -program=xx.out")
 	profilePath := flag.String("profile", "", "Program profile file path, format: -profile=fuzzerLogFile-**.yaml")
 	callTreePath := flag.String("calltree", "", "Call tree file path, format: -calltree=fuzzerLogFile-**.data")
 	port := flag.Int("port", 8080, "Port number for the web server (default: 8080), format: -port=8080")
@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	// Show help information and exit if -h is provided
-	if *help || *programPath == "" || *profilePath == "" || *callTreePath == "" {
+	if *help || *executablePath == "" || *profilePath == "" || *callTreePath == "" {
 		log.Println("Program Usage:")
 		flag.CommandLine.SetOutput(os.Stdout)
 		flag.PrintDefaults()
@@ -38,6 +38,7 @@ func main() {
 	}
 
 	// Parse the YAML file and get CallTree
+	// TODO: Calculate program profile use AST rather than external profile file
 	staticData, err := analysis.ParseProfileFromYAML(*profilePath)
 	if err != nil {
 		log.Fatalf("Error parsing YAML: %v\n", err)
@@ -48,7 +49,9 @@ func main() {
 		log.Fatalf("Error parsing call tree data: %v\n", err)
 	}
 
-	webServer := webcore.NewServer(*port, programPath, callTree)
+	webServer := webcore.NewServer(*port, executablePath, callTree)
 	webServer.Start()
+
+	log.Println("We are done here. Have a nice day!")
 
 }

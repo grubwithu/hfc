@@ -1,6 +1,5 @@
 package analysis
 
-// Add the bytes package to the imports
 import (
 	"bytes"
 	"encoding/json"
@@ -9,9 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
-type FunctionCoverage struct {
+type FuncCov struct {
 	// branches
 	Count     int      `json:"count"`
 	FileNames []string `json:"filenames"`
@@ -20,60 +21,125 @@ type FunctionCoverage struct {
 	// regions
 }
 
-type ProgramCoverageData struct {
+type ProgCovData struct {
 	CorpusCount int
 
 	// Files
-	Functions []FunctionCoverage `json:"functions"`
+	Functions []FuncCov `json:"functions"`
 	// totals
 }
 
-type ProgramCoverageFile struct {
-	Data    []ProgramCoverageData `json:"data"`
-	Type    string                `json:"type"`
-	Version string                `json:"version"`
+type ProgCovFile struct {
+	Data    []ProgCovData `json:"data"`
+	Type    string        `json:"type"`
+	Version string        `json:"version"`
 }
 
-// runOnce creates a temporary directory, executes shell commands,
-// and analyzes the resulting files
-func RunOnce(programPath string, corpusPath string) (ProgramCoverageData, error) {
-	// 1. Create a temporary directory
-	workDir, err := os.MkdirTemp("", "hfc_run_")
-	if err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("failed to create temporary directory: %w", err)
+type LineCov struct {
+	LineNumber uint32
+	Count      uint32
+	Code       []byte
+}
+
+type FileLineCov struct {
+	File  string
+	Lines []LineCov
+	code  []byte
+}
+
+func (plc *FileLineCov) GetOriginCode() []byte {
+	if plc.code != nil {
+		return plc.code
 	}
+	code := []byte{}
+	for _, line := range plc.Lines {
+		code = append(code, line.Code...)
+		code = append(code, '\n')
+	}
+	plc.code = code
+	return code
+}
+
+func (flc *FileLineCov) ResetCov() {
+	for i := range flc.Lines {
+		flc.Lines[i].Count = 0
+	}
+}
+
+func llvmLineCovPreprocess(output string) []FileLineCov {
+	lines := strings.Split(output, "\n")
+	progLineCov := []FileLineCov{}
+	var curItem *FileLineCov
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "/") {
+			if curItem != nil {
+				progLineCov = append(progLineCov, *curItem)
+			}
+			curItem = &FileLineCov{
+				File: strings.Split(line, ":")[0],
+			}
+			continue
+		}
+		if curItem == nil {
+			log.Fatalf("line %s: curItem is nil", line)
+		}
+
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) != 3 {
+			// log.Printf("Warning: ignored one line %v in %v, %v", len(curItem.Lines), curItem.File, index+1)
+			continue
+		}
+		lineNumber, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			// log.Printf("Warning: ignored one line %v in %v", len(curItem.Lines), curItem.File)
+			continue
+		}
+		count, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			count = 0
+		}
+		curItem.Lines = append(curItem.Lines, LineCov{
+			LineNumber: uint32(lineNumber),
+			Count:      uint32(count),
+			Code:       []byte(parts[2]),
+		})
+
+	}
+
+	return progLineCov
+
+}
+
+func RunOnceForProfdata(workDir string, progPath string, corpusPath string) (string, error) {
 	tempDir, err := os.MkdirTemp(workDir, "corpus")
 	if err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("failed to create corpus directory: %w", err)
+		return "", fmt.Errorf("failed to create corpus directory: %w", err)
 	}
-
-	// Clean up the temporary directory when done
-	defer func() {
-		if err := os.RemoveAll(workDir); err != nil {
-			log.Printf("Warning: failed to remove temporary directory %s: %v\n", workDir, err)
-		}
-	}()
+	defer os.RemoveAll(tempDir)
 
 	// Transform programPath to absolute path
-	programPath, err = filepath.Abs(programPath)
+	progPath, err = filepath.Abs(progPath)
 	if err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("failed to get absolute path of program: %w", err)
+		return "", fmt.Errorf("failed to get absolute path of program: %w", err)
 	}
 
 	// 2. Execute shell command
-	cmd := exec.Command(programPath, tempDir, corpusPath, "-merge=1")
+	cmd := exec.Command(progPath, tempDir, corpusPath, "-merge=1")
 	cmd.Dir = workDir
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
 	if err := cmd.Run(); err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("command execution failed: %w", err)
+		return "", fmt.Errorf("command execution failed: %w", err)
 	}
 
 	// 3. Find default.profraw in tempDir
 	defaultProfrawPath := filepath.Join(workDir, "default.profraw")
 	if _, err := os.Stat(defaultProfrawPath); os.IsNotExist(err) {
-		return ProgramCoverageData{}, fmt.Errorf("default.profraw not found in %s", workDir)
+		return "", fmt.Errorf("default.profraw not found in %s", workDir)
 	}
 
 	// 4. Running command to process default.profraw
@@ -82,36 +148,45 @@ func RunOnce(programPath string, corpusPath string) (ProgramCoverageData, error)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("command execution failed: %w", err)
+		return "", fmt.Errorf("command execution failed: %w", err)
 	}
 
-	cmd = exec.Command("llvm-cov", "export", "-instr-profile", "merged_cov.profdata", "-object="+programPath)
+	return filepath.Join(workDir, "merged_cov.profdata"), nil
+}
+
+func GetProgCov(workDir string, progPath string, profdataPath string) (ProgCovData, error) {
+
+	cmd := exec.Command("llvm-cov", "export", "-instr-profile", profdataPath, "-object="+progPath)
 	cmd.Dir = workDir
 	var outBuffer bytes.Buffer // Create a buffer to capture stdout
 	cmd.Stdout = &outBuffer
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("command execution failed: %w", err)
+		return ProgCovData{}, fmt.Errorf("command execution failed: %w", err)
 	}
-
-	llvm_cov_export := outBuffer.String()
-	// 5. Unmarshal llvm_cov_export as a ProgramCoverageData
-	var programCoverageFile ProgramCoverageFile
-	err = json.Unmarshal([]byte(llvm_cov_export), &programCoverageFile)
+	llvmCovExport := outBuffer.String()
+	var programCoverageFile ProgCovFile
+	err := json.Unmarshal([]byte(llvmCovExport), &programCoverageFile)
 	if err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("error parsing JSON: %w", err)
+		return ProgCovData{}, fmt.Errorf("error parsing JSON: %w", err)
 	}
-
 	if len(programCoverageFile.Data) > 1 {
 		log.Println("Attention: more than one ProgramCoverageData found in the JSON file")
 	}
 
-	// 6. Get the number of files in corpusPath
-	dirEntries, err := os.ReadDir(tempDir)
-	if err != nil {
-		return ProgramCoverageData{}, fmt.Errorf("failed to read corpus directory: %w", err)
-	}
-	programCoverageFile.Data[0].CorpusCount = len(dirEntries)
-
 	return programCoverageFile.Data[0], nil
+}
+
+func GetLineCov(workDir string, progPath string, profdataPath string) ([]FileLineCov, error) {
+	cmd := exec.Command("llvm-cov", "show", "--use-color=0", "-instr-profile", profdataPath, "-object="+progPath)
+	cmd.Dir = workDir
+	var outBuffer bytes.Buffer // Create a buffer to capture stdout
+	cmd.Stdout = &outBuffer
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return []FileLineCov{}, fmt.Errorf("command execution failed: %w", err)
+	}
+	llvmCovShow := outBuffer.String()
+	lineCoverage := llvmLineCovPreprocess(llvmCovShow)
+	return lineCoverage, nil
 }

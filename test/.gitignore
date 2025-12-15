@@ -1,5 +1,5 @@
 *.profraw
-.env.rc
+.env.fish
 fuzzerLogFile*
 *.out
 tmp/

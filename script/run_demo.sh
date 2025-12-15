@@ -30,10 +30,15 @@ build_freetype2() {
 # Make sure that the script is run from the root directory of the project
 ## 0. Check argument
 SKIP_BUILD=0
+HFC_ONLY=0
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-build)
       SKIP_BUILD=1
+      shift
+      ;;
+    --hfc-only)
+      HFC_ONLY=1
       shift
       ;;
     *)
@@ -92,9 +97,15 @@ pushd build-runtime/
 PROG_FILE=$(realpath ${PROGNAME}_cov)
 popd
 popd
-build/hfc -calltree=$DATA_FILE_ABS -profile=$YAML_FILE_ABS -program=$PROG_FILE & HFC_PID=$!
-sleep 1
+if [ $HFC_ONLY -eq 0 ]; then
+  build/hfc -calltree=$DATA_FILE_ABS -profile=$YAML_FILE_ABS -program=$PROG_FILE & HFC_PID=$!
+  sleep 5
+elif [ $HFC_ONLY -eq 1 ]; then
+  build/hfc -calltree=$DATA_FILE_ABS -profile=$YAML_FILE_ABS -program=$PROG_FILE
+fi
 
 ## 5. Run pfuzzer
-mkdir -p tmp_xx223
-AFL_SKIP_CPUFREQ=1 HFC_URL=http://localhost:8080 test/${TARGET}/build-runtime/${PROGNAME} tmp_xx223/ test/${TARGET}_seeds/ -fork=2 -fuzzers=afl
+if [ $HFC_ONLY -eq 0 ]; then
+  mkdir -p tmp_xx223
+  AFL_SKIP_CPUFREQ=1 HFC_URL=http://localhost:8080 test/${TARGET}/build-runtime/${PROGNAME} tmp_xx223/ test/${TARGET}_seeds/ -fork=2 -fuzzers=afl
+fi

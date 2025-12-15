@@ -2,10 +2,14 @@ package analysis
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/cpp"
 	"gopkg.in/yaml.v3"
 )
 
@@ -211,4 +215,49 @@ func ParseCallTreeFromData(filePath string, programProfile *ProgramProfile) (*Ca
 		MaxCyclomaticComplexity: maxCyclomaticComplexity,
 	}, nil
 
+}
+
+func GetProgramAST(executablePath string) (map[string]*sitter.Tree, error) {
+	// 1. create a temp directory
+	corpusDir, err := os.MkdirTemp("", "hfc_corpus_")
+	if err != nil {
+		return nil, fmt.Errorf("error creating temporary corpus directory: %w", err)
+	}
+	defer os.RemoveAll(corpusDir)
+	workDir, err := os.MkdirTemp("", "hfc_work_")
+	if err != nil {
+		return nil, fmt.Errorf("error creating temporary work directory: %w", err)
+	}
+	defer os.RemoveAll(workDir)
+
+	// 2. echo 0 > tempDir/seed
+	seedPath := filepath.Join(corpusDir, "seed")
+	if err := os.WriteFile(seedPath, []byte("0"), 0644); err != nil {
+		return nil, fmt.Errorf("error writing seed file: %w", err)
+	}
+
+	// 3. use RunOnce in dynamic.go
+	profdataPath, err := RunOnceForProfdata(workDir, executablePath, corpusDir)
+	if err != nil {
+		return nil, fmt.Errorf("error running executable file: %w", err)
+	}
+
+	// 3. use GetLineCov in dynamic.go
+	fileLineCovs, err := GetLineCov(workDir, executablePath, profdataPath)
+	if err != nil {
+		return nil, fmt.Errorf("error getting line coverage: %w", err)
+	}
+
+	// 4. parse the code in files
+	result := map[string]*sitter.Tree{}
+	parser := sitter.NewParser()
+	defer parser.Close()
+	parser.SetLanguage(cpp.GetLanguage()) // C++ is a superset of C
+	for _, file := range fileLineCovs {
+		code := file.GetOriginCode()
+		tree, _ := parser.ParseCtx(context.Background(), nil, code)
+		result[file.File] = tree
+	}
+
+	return result, nil
 }
