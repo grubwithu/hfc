@@ -8,6 +8,12 @@ Pre-requisite:
 - CMake (support `--project-file`)
 - `llvm-profdata` and `llvm-cov` are available in PATH.
 
+Init submodule:
+
+```
+$ git submodule update --init --recursive
+```
+
 Run the demo:
 
 ```
