@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,7 +26,7 @@ type APIResponse struct {
 }
 
 type ResultBody struct {
-	ConstraintGroups *[]analysis.ConstraintGroup `json:"constraint_groups"`
+	ConstraintGroups []analysis.ConstraintGroup `json:"constraint_groups"`
 }
 
 type CorpusReport struct {
@@ -90,8 +91,13 @@ func (s *Server) processCorpus(taskID TaskID, fuzzer string, corpus string) {
 		return
 	}
 
-	score := analysis.CalculateFuzzerScore(lineCov, s.FileLineCovs, s.AST)
-	log.Print(fuzzer, score)
+	startTime := time.Now()
+	score := analysis.CalculateFuzzerScore(lineCov, s.FileLineCovs, s.AST, s.SourceCode)
+	log.Print(fuzzer, " score: ", score, " time passed: ", time.Since(startTime))
+
+	s.FuzzerScoresMutex.Lock()
+	s.FuzzerScores[fuzzer] = analysis.UpdateFuzzerScore(score, s.FuzzerScores[fuzzer])
+	s.FuzzerScoresMutex.Unlock()
 
 	log.Printf("Processed corpus item %s for task %s. Global corpus count: %d\n", corpus, taskID, s.GlobalCov.CorpusCount)
 
@@ -162,12 +168,21 @@ func (s *Server) handleReportCorpus(c *gin.Context) {
 }
 
 func (s *Server) handlePeekResult(c *gin.Context) {
+	fuzzer := c.Param("fuzzer")
 
 	s.ConstraintGroupsMutex.Lock()
 
-	result := ResultBody{
-		ConstraintGroups: &s.ConstraintGroups,
+	result := ResultBody{}
+
+	s.FuzzerScoresMutex.Lock()
+	if s.FuzzerScores[fuzzer] == nil {
+		log.Println("default constraint group sequence")
+		result.ConstraintGroups = s.ConstraintGroups
+	} else {
+		log.Println("fuzzer-based constraint group sequence")
+		result.ConstraintGroups = analysis.SortConstraintGroup(s.ConstraintGroups, s.FuzzerScores[fuzzer], s.AST, s.SourceCode)
 	}
+	s.FuzzerScoresMutex.Unlock()
 
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,

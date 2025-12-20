@@ -2,9 +2,11 @@ package analysis
 
 import (
 	"log"
+	"sort"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/cpp"
 )
 
 type ConstraintType string
@@ -17,8 +19,19 @@ const (
 	CT_COMPOUND_OPERATION   ConstraintType = "comp_opr" // compound operation
 )
 
-type FuzzerScore map[ConstraintType]float64
+type ConstraintScore map[ConstraintType]float64
 
+func UpdateFuzzerScore(cur ConstraintScore, prev ConstraintScore) ConstraintScore {
+
+	for ct := range cur {
+		if _, ok := prev[ct]; ok {
+			cur[ct] = cur[ct] + prev[ct]/10.0
+		}
+	}
+	return cur
+}
+
+// TODO: use Query to boost the performance
 func findStatementAtLine(tree *sitter.Tree, targetLine uint32) *sitter.Node {
 	if tree == nil || tree.RootNode() == nil {
 		return nil
@@ -134,8 +147,8 @@ func analyzeIfClause(condition *sitter.Node, sourceCode []byte) ConstraintType {
 	return CT_COMPOUND_OPERATION
 }
 
-func CalculateFuzzerScore(curFileLineCovs []FileLineCov, prevFileLineCovs []FileLineCov, ast map[string]*sitter.Tree) FuzzerScore {
-	score := FuzzerScore{
+func CalculateFuzzerScore(curFileLineCovs []FileLineCov, prevFileLineCovs []FileLineCov, ast map[string]*sitter.Tree, sourceCode map[string][]byte) ConstraintScore {
+	score := ConstraintScore{
 		CT_VALUE_COMPARISON:     0,
 		CT_BITWISE_OPERATION:    0,
 		CT_STRING_MATCH:         0,
@@ -157,7 +170,7 @@ func CalculateFuzzerScore(curFileLineCovs []FileLineCov, prevFileLineCovs []File
 			}
 		}
 
-		log.Println(fileName)
+		// log.Println(fileName)
 
 		tree, hasAST := ast[fileName]
 		if !hasAST {
@@ -189,12 +202,12 @@ func CalculateFuzzerScore(curFileLineCovs []FileLineCov, prevFileLineCovs []File
 					/*
 						if_statments contains:
 							if
-							parenthesized_expression
+							condition_clause
 							*_statement
 							else_clause
 						or
 							if
-							parenthesized_expression
+							condition_clause
 							expression_statement
 					*/
 					body := findIfBody(ifNode)
@@ -202,7 +215,7 @@ func CalculateFuzzerScore(curFileLineCovs []FileLineCov, prevFileLineCovs []File
 					if body.StartPoint().Row+1 <= lineNum && lineNum <= body.EndPoint().Row+1 {
 						condition := findIfCondition(ifNode)
 						if condition != nil {
-							constraintType := analyzeIfClause(condition, prevFileLineCov.GetOriginCode())
+							constraintType := analyzeIfClause(condition, sourceCode[fileName])
 							score[constraintType] += 1.0
 						}
 					}
@@ -214,6 +227,154 @@ func CalculateFuzzerScore(curFileLineCovs []FileLineCov, prevFileLineCovs []File
 		}
 	}
 
-	log.Printf("Fuzzer score calculated: %+v", score)
+	// log.Printf("Fuzzer score calculated: %+v", score)
 	return score
+}
+
+func findFunctionWithQuery(ast *sitter.Tree, sourceCode []byte, funcName string) *sitter.Node {
+	root := ast.RootNode()
+
+	queryStr := `
+		(function_definition
+			(function_declarator
+				(identifier) @target_id
+			)
+		) @target_def
+	`
+
+	q, err := sitter.NewQuery([]byte(queryStr), cpp.GetLanguage())
+	if err != nil {
+		return nil
+	}
+	defer q.Close()
+
+	qc := sitter.NewQueryCursor()
+	defer qc.Close()
+
+	qc.Exec(q, root)
+
+	for {
+		match, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+
+		var defNode *sitter.Node
+		var idName string
+
+		for _, capture := range match.Captures {
+			captureName := q.CaptureNameForId(capture.Index)
+
+			switch captureName {
+			case "target_id":
+				idName = capture.Node.Content(sourceCode)
+			case "target_def":
+				defNode = capture.Node
+			}
+		}
+
+		if idName == funcName {
+			return defNode
+		}
+	}
+
+	return nil
+}
+
+func analyzeFunction(funcNode *sitter.Node, sourceCode []byte) ConstraintScore {
+	if funcNode == nil {
+		return ConstraintScore{}
+	}
+
+	queryStr := `(if_statement) @target`
+
+	q, err := sitter.NewQuery([]byte(queryStr), cpp.GetLanguage())
+	if err != nil {
+		return nil
+	}
+	defer q.Close()
+
+	qc := sitter.NewQueryCursor()
+	defer qc.Close()
+
+	qc.Exec(q, funcNode)
+
+	score := ConstraintScore{}
+	for {
+		match, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+		for _, capture := range match.Captures {
+			if q.CaptureNameForId(capture.Index) == "target" {
+				condition := findIfCondition(capture.Node)
+				if condition != nil {
+					constraintType := analyzeIfClause(condition, sourceCode)
+					score[constraintType] += 1.0
+				}
+			}
+		}
+	}
+
+	// normalize the score
+	maxScore := 0.0
+	for _, v := range score {
+		if v > maxScore {
+			maxScore = v
+		}
+	}
+	for k := range score {
+		score[k] /= maxScore
+	}
+
+	return score
+}
+
+func SortConstraintGroup(constraintGroups []ConstraintGroup, fuzzerScore ConstraintScore, ast map[string]*sitter.Tree, sourceCode map[string][]byte) []ConstraintGroup {
+	// test whether fuzzerScore is all zero
+	allZero := true
+	for _, v := range fuzzerScore {
+		if v != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return constraintGroups
+	}
+
+	fuzzerCompatibility := map[string]float64{}
+
+	for _, group := range constraintGroups {
+		// check whether ast contains group.FileName
+		tree, hasAST := ast[group.FileName]
+		if !hasAST {
+			log.Println("Warning: cannot find ast of " + group.FileName)
+			fuzzerCompatibility[group.GroupId] = 0.0
+			continue
+		}
+
+		funcNode := findFunctionWithQuery(tree, sourceCode[group.FileName], group.MainFunction)
+		if funcNode == nil {
+			log.Println("Warning: cannot find function " + group.MainFunction + " in file " + group.FileName)
+			fuzzerCompatibility[group.GroupId] = 0.0
+			continue
+		}
+
+		scores := analyzeFunction(funcNode, sourceCode[group.FileName])
+		total := 0.0
+		for index := range scores {
+			total += scores[index] * fuzzerScore[index]
+		}
+		fuzzerCompatibility[group.GroupId] = total
+		log.Println("Function "+group.MainFunction+" ", total)
+	}
+
+	// sort constraintGroups by fuzzerCompatibility
+	sort.Slice(constraintGroups, func(i, j int) bool {
+		return fuzzerCompatibility[constraintGroups[i].GroupId] > fuzzerCompatibility[constraintGroups[j].GroupId]
+	})
+
+	return constraintGroups
+
 }

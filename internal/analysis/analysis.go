@@ -10,7 +10,7 @@ import (
 
 var (
 	IMPORTANCE_SCORE_THRESHOLD = 0.5
-	MAX_CONSTRAINTS            = 10
+	MAX_CONSTRAINTS            = 30
 )
 var (
 	W_HitFreq    = 0.10
@@ -33,6 +33,7 @@ type ImportantConstraint struct {
 type ConstraintGroup struct {
 	GroupId         string     `json:"group_id"`
 	MainFunction    string     `json:"function"`
+	FileName        string     `json:"file_name"`
 	TotalImportance float64    `json:"importance"`
 	Paths           [][]string `json:"paths"`
 
@@ -100,6 +101,7 @@ func GroupConstraintsByFunction(constraints []ImportantConstraint, progCovData *
 			functionGroups[funcName] = &ConstraintGroup{
 				GroupId:      uuid.New().String(),
 				MainFunction: funcName,
+				FileName:     constraint.CallTreeNode.FunctionProfile.FunctionSourceFile,
 			}
 		}
 		functionGroups[funcName].Constraints = append(functionGroups[funcName].Constraints, constraint)

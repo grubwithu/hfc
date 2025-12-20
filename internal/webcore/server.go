@@ -27,6 +27,7 @@ type Server struct {
 	AST        map[string]*sitter.Tree
 	Executable *string
 	CallTree   *analysis.CallTree
+	SourceCode map[string][]byte
 
 	GlobalCovMutex        sync.Mutex // mutex for global function coverage
 	GlobalCov             *analysis.ProgCovData
@@ -35,7 +36,7 @@ type Server struct {
 	FileLineCovsMutex     sync.Mutex
 	FileLineCovs          []analysis.FileLineCov
 	FuzzerScoresMutex     sync.Mutex
-	FuzzerScores          map[string]analysis.FuzzerScore
+	FuzzerScores          map[string]analysis.ConstraintScore
 }
 
 func NewServer(port int, progPath *string, callTree *analysis.CallTree) *Server {
@@ -75,11 +76,13 @@ func NewServer(port int, progPath *string, callTree *analysis.CallTree) *Server 
 
 	// 4. parse the code in files
 	ast := map[string]*sitter.Tree{}
+	sourceCode := map[string][]byte{}
 	parser := sitter.NewParser()
 	defer parser.Close()
 	parser.SetLanguage(cpp.GetLanguage()) // C++ is a superset of C
 	for _, file := range fileLineCovs {
 		code := file.GetOriginCode()
+		sourceCode[file.File] = code
 		tree, _ := parser.ParseCtx(context.Background(), nil, code)
 		ast[file.File] = tree
 	}
@@ -91,7 +94,9 @@ func NewServer(port int, progPath *string, callTree *analysis.CallTree) *Server 
 		Executable:   progPath,
 		CallTree:     callTree,
 		AST:          ast,
+		SourceCode:   sourceCode,
 		FileLineCovs: fileLineCovs,
+		FuzzerScores: make(map[string]analysis.ConstraintScore),
 	}
 	server.setupRoutes()
 	return server
@@ -99,7 +104,7 @@ func NewServer(port int, progPath *string, callTree *analysis.CallTree) *Server 
 
 func (s *Server) setupRoutes() {
 	s.Router.POST("/reportCorpus", s.handleReportCorpus)
-	s.Router.GET("/peekResult", s.handlePeekResult)
+	s.Router.GET("/peekResult/:fuzzer", s.handlePeekResult)
 }
 
 func (s *Server) Start() error {

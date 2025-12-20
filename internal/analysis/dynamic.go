@@ -44,19 +44,14 @@ type LineCov struct {
 type FileLineCov struct {
 	File  string
 	Lines []LineCov
-	code  []byte
 }
 
 func (plc *FileLineCov) GetOriginCode() []byte {
-	if plc.code != nil {
-		return plc.code
-	}
 	code := []byte{}
 	for _, line := range plc.Lines {
 		code = append(code, line.Code...)
 		code = append(code, '\n')
 	}
-	plc.code = code
 	return code
 }
 
