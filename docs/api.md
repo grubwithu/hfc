@@ -29,7 +29,7 @@ Response Body:
 
 
 ## GET
-### /peekResult
+### /peekResult/:fuzzer
 
 Response Body:
 ```json
