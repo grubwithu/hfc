@@ -32,6 +32,7 @@ type PrerunData struct {
 	AST         map[string]*sitter.Tree
 	ASTMutex    sync.Mutex
 	SourceCode  map[string][]byte
+	FuncScores  map[string]analysis.ConstraintScore
 }
 
 // Plugin handles initial corpus processing
@@ -172,6 +173,50 @@ func (p *Plugin) Init(ctx context.Context, config plugin.PluginConfig) error {
 	}
 	p.Log(ctx, "Parse code files took %v\n", time.Since(start))
 
+	// Analyze all reachable functions in the call tree
+	start = time.Now()
+	funcScores := make(map[string]analysis.ConstraintScore)
+	processed := make(map[string]bool)
+	totalScores := analysis.ConstraintScore{
+		analysis.CT_VALUE_COMPARISON:     0,
+		analysis.CT_BITWISE_OPERATION:    0,
+		analysis.CT_STRING_MATCH:         0,
+		analysis.CT_ARITHMETIC_OPERATION: 0,
+		analysis.CT_COMPOUND_OPERATION:   0,
+	}
+	for _, node := range callTree.Nodes {
+		if node.FunctionProfile == nil {
+			continue
+		}
+		funcName := node.FunctionProfile.FunctionName
+		// p.Log(ctx, "Analyzing function %s\n", funcName)
+		if processed[funcName] {
+			continue
+		}
+		processed[funcName] = true
+		scores := analysis.AnalyzeFunctionScore(funcName, node.FunctionProfile.FunctionSourceFile, ast, sourceCode, fileLineCovs)
+		if scores != nil {
+			funcScores[funcName] = scores
+			p.Log(ctx, "  %s: val_cmp=%.2f, bit_opr=%.2f, str_mat=%.2f, art_opr=%.2f, comp_opr=%.2f\n",
+				funcName,
+				scores[analysis.CT_VALUE_COMPARISON],
+				scores[analysis.CT_BITWISE_OPERATION],
+				scores[analysis.CT_STRING_MATCH],
+				scores[analysis.CT_ARITHMETIC_OPERATION],
+				scores[analysis.CT_COMPOUND_OPERATION])
+			for ct, score := range scores {
+				totalScores[ct] += score
+			}
+		}
+	}
+	p.Log(ctx, "Analyze function scores took %v, analyzed %d functions\n", time.Since(start), len(funcScores))
+	p.Log(ctx, "Total scores: val_cmp=%.2f, bit_opr=%.2f, str_mat=%.2f, art_opr=%.2f, comp_opr=%.2f\n",
+		totalScores[analysis.CT_VALUE_COMPARISON],
+		totalScores[analysis.CT_BITWISE_OPERATION],
+		totalScores[analysis.CT_STRING_MATCH],
+		totalScores[analysis.CT_ARITHMETIC_OPERATION],
+		totalScores[analysis.CT_COMPOUND_OPERATION])
+
 	// Store initialization data
 	p.initData = PrerunData{
 		Cov:         cov,
@@ -182,6 +227,7 @@ func (p *Plugin) Init(ctx context.Context, config plugin.PluginConfig) error {
 		CallTree:    *callTree,
 		ProgProfile: progProfile,
 		DebugInfo:   *debugInfo,
+		FuncScores:  funcScores,
 	}
 	p.isInitialized = true
 

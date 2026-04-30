@@ -528,14 +528,14 @@ func analyzeFunction(funcNode *sitter.Node, sourceCode []byte, lineCov *FileLine
 					constraintType := analyzeIfClause(condition, sourceCode)
 
 					var scale float64 = 1.0
-					if lineCov != nil {
-						var avgHit uint32
-						for row := capture.Node.StartPoint().Row; row <= capture.Node.EndPoint().Row; row++ {
-							avgHit += lineCov.Lines[row].Count
-						}
-						avgHit /= capture.Node.EndPoint().Row - capture.Node.StartPoint().Row + 1
-						scale = (1 - float64(avgHit)/float64(maxLineHit)) + 0.5 // Range 0.5-1.5, low hit gives higher score
-					}
+					// if lineCov != nil {
+					// 	var avgHit uint32
+					// 	for row := capture.Node.StartPoint().Row; row <= capture.Node.EndPoint().Row; row++ {
+					// 		avgHit += lineCov.Lines[row].Count
+					// 	}
+					// 	avgHit /= capture.Node.EndPoint().Row - capture.Node.StartPoint().Row + 1
+					// 	scale = (1 - float64(avgHit)/float64(maxLineHit)) + 0.5 // Range 0.5-1.5, low hit gives higher score
+					// }
 
 					score[constraintType] += 1.0 * scale
 				}
@@ -544,15 +544,15 @@ func analyzeFunction(funcNode *sitter.Node, sourceCode []byte, lineCov *FileLine
 	}
 
 	// normalize the score
-	maxScore := 0.0
-	for _, v := range score {
-		if v > maxScore {
-			maxScore = v
-		}
-	}
-	for k := range score {
-		score[k] /= maxScore
-	}
+	// maxScore := 0.0
+	// for _, v := range score {
+	// 	if v > maxScore {
+	// 		maxScore = v
+	// 	}
+	// }
+	// for k := range score {
+	// 	score[k] /= maxScore
+	// }
 
 	return score
 }
@@ -592,4 +592,28 @@ func ExtractStringLiterals(tree *sitter.Tree, sourceCode []byte, funcName string
 	}
 
 	return results
+}
+
+// AnalyzeFunctionScore is an exported wrapper for analyzeFunction that finds and analyzes a function by name.
+// It returns the constraint scores for the function, or nil if the function cannot be found or analyzed.
+func AnalyzeFunctionScore(funcName string, sourceFile string, ast map[string]*sitter.Tree, sourceCode map[string][]byte, lineCovs []FileLineCov) ConstraintScore {
+	tree, hasAST := ast[sourceFile]
+	if !hasAST {
+		log.Printf("AST for file %s not found\n", sourceFile)
+		return nil
+	}
+
+	// Find function node
+	var funcNode *sitter.Node
+	if strings.HasPrefix(funcName, "_Z") {
+		funcNode = findFunctionAtLine(tree, uint32(0)) // TODO: need line number
+	} else {
+		funcNode = findFunctionByName(tree, sourceCode[sourceFile], funcName)
+	}
+
+	if funcNode == nil {
+		return nil
+	}
+
+	return analyzeFunction(funcNode, sourceCode[sourceFile], nil)
 }
