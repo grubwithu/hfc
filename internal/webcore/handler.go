@@ -2,6 +2,7 @@ package webcore
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,6 +38,17 @@ func (s *Server) processCorpus(reqBody CorpusReportReqBody) {
 		JobID:  reqBody.JobId,
 		Budget: reqBody.JobBudget,
 	}
+
+	// tar all corpus to /opt/<job_id>.tgz
+	tarPath := fmt.Sprintf("/opt/%d.tgz", reqBody.JobId)
+	cmd := exec.Command("tar", "-czvf", tarPath, reqBody.Corpus[0])
+	if err := cmd.Run(); err != nil {
+		log.Printf("Error creating tarball: %v\n", err)
+		return
+	}
+
+	// set corpus to tarPath
+	pluginData.Corpus = tarPath
 
 	// Process through plugin pipeline
 	if s.PluginRegistry != nil {
