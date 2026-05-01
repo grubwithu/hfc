@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/grubwithu/orchestra/internal/analysis"
@@ -39,16 +40,14 @@ func (s *Server) processCorpus(reqBody CorpusReportReqBody) {
 		Budget: reqBody.JobBudget,
 	}
 
-	// tar all corpus to /opt/<job_id>.tgz
-	tarPath := fmt.Sprintf("/opt/%d.tgz", reqBody.JobId)
-	cmd := exec.Command("tar", "-czvf", tarPath, reqBody.Corpus[0])
-	if err := cmd.Run(); err != nil {
-		log.Printf("Error creating tarball: %v\n", err)
-		return
+	// tar all corpus to /opt/<current-time>.tgz
+	if reqBody.Period == "summary" {
+		tarPath := fmt.Sprintf("/opt/%s.tgz", time.Now().Format("20060102150405"))
+		cmd := exec.Command("tar", "-czvf", tarPath, reqBody.Corpus[0])
+		if err := cmd.Run(); err != nil {
+			log.Printf("Error creating tarball: %v\n", err)
+		}
 	}
-
-	// set corpus to tarPath
-	pluginData.Corpus = tarPath
 
 	// Process through plugin pipeline
 	if s.PluginRegistry != nil {
