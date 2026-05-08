@@ -18,9 +18,8 @@ $ git submodule update --init --recursive
 ```
 
 Run the demo:
-
 ```
-$ bash scripts/run_demo.sh freetype2
+$ bash scripts/run_demo.sh freetype2 --default -seed_strategy=6 -fuzzer_strategy=6 -orchestra_dict=1
 ```
 
 This script will:
@@ -36,12 +35,17 @@ This script will:
 ## Run in Docker
 
 We provide Dockerfiles to build the test environment.
+```
+$ bash script/build_images.sh
+$ docker run -it --privileged hfc-freetype2 bash
+## Inside the container
+$ bash script/run_demo.sh freetype2 --default -seed_strategy=6 -fuzzer_strategy=6 -orchestra_dict=1
+```
 
+This may take a long while to build 21 targets. You can build them manually by the following command:
 ```
 $ docker build -t hfc-base:latest .
 $ cd test/
-$ docker build -t hfc-test:latest .
-$ docker run -it --privileged hfc-test bash
-## Inside the container
-$ bash script/run_demo.sh freetype2 -seed_strategy=6 -fuzzer_strategy=6
+$ docker build -t hfc-test:latest -f base.Dockerfile .
+$ docker build -t hfc-freetype2:latest -f dockerfile/freetype2.Dockerfile
 ```
