@@ -3,6 +3,17 @@ This is a module that runs with [pfuzzer](https://github.com/grubwithu/pfuzzer).
 
 > HFC is an alias of Orchestra.
 
+## V2 refactoring scaffold
+
+The repository now contains a side-by-side V2 scaffold under `cmd/`,
+`internal/`, `codeql/`, `schema/`, and `experiments/`. It uses OSS-Fuzz as the
+target build backend, CodeQL for build-time semantic facts, and versioned
+runtime/coordinator contracts. The existing implementation remains unchanged
+as the V1 experiment-reproduction baseline.
+
+See [docs/v2/README.md](docs/v2/README.md) for the architecture, current scope,
+local setup, and milestone boundaries.
+
 ## Usage
 
 > Docker is recommended to run Orchestra.

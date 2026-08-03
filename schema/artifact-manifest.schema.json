@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/grubwithu/orchestra/schema/artifact-manifest.schema.json",
+  "title": "Orchestra V2 build artifact manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "created_at",
+    "build_fingerprint",
+    "oss_fuzz_revision",
+    "oss_fuzz_project",
+    "fuzz_target",
+    "source_revision",
+    "profile",
+    "engine",
+    "sanitizer",
+    "architecture",
+    "docker_image",
+    "binary_path",
+    "binary_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "build_fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "oss_fuzz_revision": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "oss_fuzz_project": { "type": "string" },
+    "project_definition_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "fuzz_target": { "type": "string" },
+    "source_revision": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "primary_source_dir": { "type": "string" },
+    "profile": { "type": "string" },
+    "engine": { "type": "string" },
+    "sanitizer": { "type": "string" },
+    "architecture": { "type": "string" },
+    "docker_image": { "type": "string" },
+    "docker_image_digest": { "type": "string" },
+    "binary_path": { "type": "string" },
+    "binary_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "codeql_database_path": { "type": "string" },
+    "environment": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,37 @@
+schema_version: 1
+
+oss_fuzz:
+  # Clone this exact revision into third_party/oss-fuzz before building.
+  checkout: ../third_party/oss-fuzz
+  revision: d3eb91008ac102440b4a47b268f6f3de3f29cd14
+  python: python3
+  # The CodeQL bundle is mounted read-only into the OSS-Fuzz builder.
+  codeql_bundle: ../tools/codeql
+  docker: docker
+
+artifacts_dir: ../build/v2/artifacts
+
+targets:
+  - id: zlib-uncompress
+    oss_fuzz_project: zlib
+    fuzz_target: zlib_uncompress_fuzzer
+    language: c++
+    primary_source_dir: /src/zlib
+    source_revision: e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        # The LLVM pass can be injected here once its shared object is built.
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.json
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+      - name: engine-afl
+        engine: afl
+        sanitizer: address
+        architecture: x86_64
