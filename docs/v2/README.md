@@ -1,8 +1,29 @@
-# Orchestra V2 scaffold
+# Orchestra V2
 
 Orchestra V2 is developed beside the existing implementation. V1 remains the
 reproduction baseline; V2 packages do not import `internal/analysis` or the V1
 plugin graph.
+
+## Start here
+
+This README is the short operational entry point. Coding agents and new
+contributors must also read:
+
+1. [`DESIGN.md`](DESIGN.md) -- motivation, authoritative architecture, goals,
+   non-goals, and final acceptance conditions.
+2. [`CONTRACTS.md`](CONTRACTS.md) -- identity, Program Model, seed, job,
+   frontier, Region, and event semantics.
+3. [`ROADMAP.md`](ROADMAP.md) -- actual component status, milestone gates, and
+   the ordered handoff work queue.
+4. [`../../AGENTS.md`](../../AGENTS.md) -- repository rules and required
+   verification for coding agents.
+
+The current branch is a tested scaffold, not a completed vertical slice. No
+real zlib OSS-Fuzz/CodeQL artifact bundle has yet been verified, the LLVM edge
+pass and model importer are absent, and the probe/worker packages contain
+interfaces rather than production implementations. M0 is therefore still in
+progress. `ROADMAP.md` is authoritative when a source file or interface makes
+a component look more complete than it is.
 
 ## Implemented in this scaffold
 
@@ -30,6 +51,11 @@ plugin graph.
 
 These are later milestones. Adding policy before the measurement chain is
 validated would make results difficult to trust.
+
+The in-memory Coordinator is also only a contract harness. It currently
+accepts bitmap unions and crossed-frontier IDs from its caller. The production
+path must build unions from canonical Seed Records and derive frontier
+transitions from the immutable Program Model.
 
 ## Build flow
 
@@ -138,3 +164,9 @@ CodeQL guard
 
 The milestone passes only when manually labeled guards meet the mapping-quality
 threshold and the incremental bitmap result matches a full-corpus replay.
+
+Before implementing the complete mapping chain, finish M0: execute the pinned
+`zlib-uncompress` semantic-canonical build, verify the target with the matching
+OSS-Fuzz base runner, inspect the captured CodeQL database, validate the
+artifact manifest, and record reproducibility evidence. See the ordered tasks
+in [`ROADMAP.md`](ROADMAP.md).

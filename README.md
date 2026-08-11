@@ -11,8 +11,10 @@ target build backend, CodeQL for build-time semantic facts, and versioned
 runtime/coordinator contracts. The existing implementation remains unchanged
 as the V1 experiment-reproduction baseline.
 
-See [docs/v2/README.md](docs/v2/README.md) for the architecture, current scope,
-local setup, and milestone boundaries.
+Start with [docs/v2/README.md](docs/v2/README.md). The complete handoff is split
+into the [design](docs/v2/DESIGN.md), [contracts](docs/v2/CONTRACTS.md), and
+[roadmap/current status](docs/v2/ROADMAP.md). Coding agents must also follow
+[AGENTS.md](AGENTS.md).
 
 ## Usage
 
