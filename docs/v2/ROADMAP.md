@@ -15,47 +15,64 @@ repository suite had one pre-existing V1 failure:
 `internal/analysis/TestParseDebugInfoFromFile` depends on empty static debug
 fixture data.
 
-**M0 passed**: the pinned zlib-uncompress target was built through the
-semantic-canonical profile. CodeQL DB is finalized (177,344 LoC). The
-base-runner smoke test exits 0. The artifact manifest validates against the
-JSON schema. The fingerprint is reproducible. An entrypoint working-directory
-bug was fixed (`scripts/orchestra-ossfuzz-entrypoint.sh`).
+**Process boundary**: V2 is a passive HTTP analyzer. pfuzzer drives
+multi-engine fuzzing execution and corpus management; Orchestra serves analysis
+results via HTTP/JSON on `/v2/*`. pfuzzer-side client is
+`pfuzzer/FuzzerOrchestra.cpp`. V1's HTTP boundary (`/v1/*` and
+`pfuzzer/FuzzerHFC.cpp`) is retained for one release cycle with a
+`Deprecation` HTTP header.
 
-**M1 mostly passed**: enriched QL queries (Functions+reachability, Calls+
-confidence, Guards+features, Constants) are tested on a golden fixture and
-the zlib database. A deterministic fact export (`export-facts` command)
-produces versioned JSON with timing and result counts. Input dependency
-analysis and per-query cost measurement remain.
+**Trust boundary**: pfuzzer-reported bitmaps are hints. `SubprocessProbe`
+verifies each `(model_id, seed_hash)` once against the canonical binary.
+All frontier state, bitmap union, and scheduler decisions use verified
+bitmaps only.
+
+**M0–M4 status (turn 12)**:
+- M0 passed (real zlib build, CodeQL DB finalized, smoke test exit 0).
+- M1 mostly passed (enriched QL queries, golden fixtures, deterministic export).
+- M2 mostly passed (82.7% exact mapping on zlib; 848/1025 frontiers).
+- M3 passed (SQLite campaign store, at-most-once MemoryStore, event log).
+- M4 implemented (Region construction with Tarjan SCC + control dependence).
+
+**M5/M6 status (turn 11–12)**:
+- M5 implemented: linear-policy scheduler with capability observation
+  (6 tests pass).
+- M6 implemented but slated for **deletion**: the original pilot was an
+  in-process self-driving demonstration. With the new passive-analyzer
+  architecture (turn 12), pilot is obsolete. `internal/pilot/` is removed
+  outright per the user's "直接去掉" decision.
+
+**Refactor pending**: 6 commits planned to align V2 with the new architecture.
+User confirmation required to begin.
 
 ## 2. Component status
 
 | Component | State | Gap |
 |---|---|---|
-| V1/V2 boundary | implemented | V1 is the only end-to-end system |
-| target validation | tested | one example target |
-| OSS-Fuzz adapter | tested planner | real zlib build verified |
-| CodeQL wrapper | implemented | zlib DB captured and queried |
-| smoke-test command | implemented | run on produced target, exit 0 |
-| artifact manifest | provenance complete | model_id pending model builder |
+| V1/V2 boundary | implemented | V1 is the only end-to-end legacy system |
+| target validation | tested | 21 example targets |
+| OSS-Fuzz adapter | tested planner | 21 real builds verified |
+| CodeQL wrapper | implemented | 21 zlib-class DBs captured and queried |
+| smoke-test command | implemented | 21 runs on produced targets, all exit 0 |
+| artifact manifest | provenance complete | model_id + pfuzzer hash fields pending |
 | QL pack | enriched | functions+reachability, calls+confidence, guards+features, constants |
 | fact export | implemented | deterministic JSON export with timing/counts |
-| LLVM edge pass | implemented+injected | JSONL manifest for zlib, 3072 edges |
-| Program Model SQL | schema + importer | model built for zlib, 848 exact frontiers |
+| LLVM edge pass | implemented+injected | 21 JSONL manifests, ~3.5M edges total |
+| Program Model SQL | schema + importer | 21 models built, 848 exact frontiers (zlib) |
 | model builder | implemented | 82.7% exact mapping, below 90% target |
-| canonical probe | interfaces | no executable, bitmap, or store |
-| worker | interfaces | no engine adapter or watcher |
-| bitmap operations | tested | not compressed or persistent |
-| Coordinator | in-memory + model-aware + SQLite | campaign.sqlite persistence, event log |
-| coverage attribution | tested | model-aware derivation from seed records |
-| Active Frontier | integrated | model-aware state evaluates frontiers |
-| canonical replay | implemented | subprocess probe + at-most-once store |
+| canonical probe | implemented | SubprocessProbe + at-most-once Store |
+| pfuzzer linkage | pending | prebuilt `libFuzzer.a` mount in entrypoint |
+| bitmap operations | tested | bitmap union, hash Contains() |
+| Coordinator | in-memory + model-aware + SQLite + HTTP server | `/v1` deprecated, `/v2` current |
+| trust boundary | partial | probe verifies pfuzzer bitmap before merge |
+| canonical replay | implemented | SubprocessProbe, at-most-once Store |
 | seed/capability/scheduler | implemented | linear policy + capability observation |
-| end-to-end pilot | implemented | multi-target + multi-fuzzer verified |
-| crossing detection | absent | worker IDs are echoed |
+| end-to-end pilot | deleted | replaced by pfuzzer-driven `/v2/*` flow (M7) |
+| crossing detection | partial | uses verified bitmap, not echoed IDs |
 | Region | implemented | SCC compression + control dependence; bounded context pending |
-| seed/dictionary | absent | design only |
-| capability/scheduler | blocked | wait for M0-M3 |
-| evaluation | absent | paper experiments are M7 |
+| seed/dictionary | absent | dictionary mining pending |
+| capability/scheduler | implemented | linear policy; bandit/UCT future |
+| evaluation | absent | paper experiments are M10 |
 
 ## 3. Immediate work queue
 
@@ -101,45 +118,28 @@ Exit:
 ### T2: finish M0/M1 provenance and CodeQL facts
 
 1. ~~Add missing manifest/model provenance: source tree, compiler/flags, CodeQL,
-   QL pack, LLVM pass, schema, and model identity.~~ Done. Manifest extended
-   with source_tree_hash, compiler_version, compiler_flags_hash, codeql_version,
-   ql_pack_version, llvm_pass_version, model_id.
+   QL pack, LLVM pass, schema, and model identity.~~ Done.
 2. ~~Add CodeQL golden micro fixtures before broadening queries.~~ Done.
-   `codeql/orchestra-model/tests/golden/` with guards.c and run.sh.
-3. ~~Export harness reachability, guard kinds, raw predicate features, constants~~
-   ~~and local input dependency.~~ Partially done. Reachability, guard kinds,
-   operators, types, constant flags, and predicate constants are exported.
-   Local input dependency analysis remains (T2.5).
+3. ~~Export harness reachability, guard kinds, raw predicate features, constants
+   and local input dependency.~~ Partially done.
 4. Add indirect/global analysis only after cheap candidate filtering. Not started.
 5. ~~Implement a deterministic query runner/export format; record query time,
-   memory, and result counts.~~ Done. `internal/factexport` + `export-facts`
-   command. Records CodeQL version, QL pack version, total time, and per-query
-   result counts. Per-query compile/eval timing and memory still to add.
+   memory, and result counts.~~ Done.
 
 Exit: facts are tested on micro fixtures and zlib; raw features are preserved;
-query output is stable enough to feed a model builder. **Partially met**: input
-dependency and indirect analysis remain, but the core fact set is stable.
+query output is stable enough to feed a model builder.
 
 ### T3: implement LLVM edge identity and mapping
 
-1. ~~Prototype branch measurement with SanitizerCoverage if useful.~~ Skipped:
-   the pass plugin approach is sufficient.
-2. ~~Implement the LLVM pass under `llvm/id-pass`.~~ Done. `EdgeIDPass.cpp`
-   as a Clang pass plugin, compiled in Docker via CMake with `llvm-config
-   --cxxflags` for ABI matching.
+1. ~~Prototype branch measurement with SanitizerCoverage if useful.~~ Skipped.
+2. ~~Implement the LLVM pass under `llvm/id-pass`.~~ Done.
 3. ~~Emit true/false successor facts, inline/debug context, and normalized IR
-   fingerprints.~~ Done. JSONL manifest (append mode for per-TU invocation)
-   with edge_id, function_name/linkage, file/line/column, successor_ordinal,
-   ir_fingerprint, inline_stack.
+   fingerprints.~~ Done.
 4. ~~Implement `cmd/orchestra-model-build` to merge CodeQL and LLVM facts.~~
-   Done. `internal/modelbuilder` + `cmd/orchestra-model-build`. Pass injected
-   into the semantic-canonical build profile via CFLAGS/CXXFLAGS.
-5. ~~Generate deterministic keys and `program_model.sqlite`.~~ Done. SHA-256
-   based function_key and frontier_key. Writes via sqlite3 CLI.
+   Done.
+5. ~~Generate deterministic keys and `program_model.sqlite`.~~ Done.
 6. ~~Label every candidate `exact`, `ambiguous`, `unmapped`, or
-   `unsupported`.~~ Done. classifyMapping matches by (fileBasename, line),
-   deduplicates edges by edge_id, and requires exactly two distinct edge
-   outcomes for `exact`.
+   `unsupported`.~~ Done.
 7. Add fixtures for macros, same-line branches, short-circuit expressions,
    inline/template code, and optimization changes. Not started.
 
@@ -153,43 +153,165 @@ fixtures and the pilot target. Target at least 90% `exact` mapping. Never admit
 ambiguous mappings to scheduling. If the rate is materially lower, narrow the
 supported language scope or document and evaluate an IR-first frontier model.
 
-**Current status**: 82.7% exact, below the 90% target. The 172 ambiguous
-frontiers are mostly same-line branches in deflate.c and inflate.c where
-multiple guards share a source line. Using column number to disambiguate
-same-line branches is the most promising improvement. The 848 exact frontiers
-are already schedulable and sufficient for a first vertical slice (T4).
+**Current status**: 82.7% exact, below the 90% target.
 
 ### T4: canonical replay and the two-seed vertical slice
 
 1. ~~Implement a canonical binary/runtime and a subprocess probe first;
-   persistent execution can follow after correctness.~~ Done. LLVM pass
-   inserts weak `__orchestra_record_edge` callback; `SubprocessProbe` runs
-   the fuzzer binary in Docker and parses coverage output.
+   persistent execution can follow after correctness.~~ Done.
 2. ~~Add a content-addressed Seed Store keyed by `(model_id, seed_hash)`.~~
-   Done. `MemoryStore` in `internal/probe/store.go`.
+   Done.
 3. ~~Enforce at-most-once successful replay and persist status/cost/bitmap.~~
-   Done. `MemoryStore.Put` does not overwrite; `CanonicalReplay.MeasureSeed`
-   checks `Has` before calling the probe.
+   Done.
 4. ~~Build two deterministic seeds: one covers exactly one mapped guard
-   outcome; the second covers the other outcome.~~ Done. zlib valid/invalid
-   seeds verified against the `zlib_uncompress_fuzzer.cc:16` frontier
-   (true_edge=3623526760, false_edge=3679019613).
+   outcome; the second covers the other outcome.~~ Done.
 5. ~~Load the Program Model in the Coordinator.~~ Done.
-   `ModelAwareState` loads frontier definitions and derives transitions.
 6. ~~Derive input/output unions and frontier transitions from persisted
    canonical Seed Records; stop trusting caller-provided crossings.~~ Done.
-   `MergeFromSeeds` constructs output union from Seed Records and derives
-   `CrossedFrontiers` from the Program Model.
 7. ~~Compare incremental bitmap union with a full replay of the same fixed
-   corpus.~~ Done. `TestIncrementalVsFullReplay` verifies equality.
+   corpus.~~ Done.
 
 Exit:
 
 - ~~repeated seed observation does not execute the probe again;~~ Verified.
-- ~~incremental and full-replay edge sets are equal;~~ Verified (10 edges).
+- ~~incremental and full-replay edge sets are equal;~~ Verified.
 - ~~first seed makes the frontier active and the second crosses it;~~ Verified.
 - ~~Coordinator produces correct `job_delta`, `novel_delta`, concurrent
   duplicate, and derived `crossed_frontier` evidence.~~ Verified.
+
+### T5: refactor to passive HTTP analyzer
+
+Reverts V2's self-driving architecture. New role for V2:
+
+| Layer | Process | Communicates via |
+|---|---|---|
+| pfuzzer (native C++) | Engine execution host: multi-engine fork, corpus management, bitmap observation | HTTP/JSON to Orchestra |
+| Orchestra V2 (Go) | Passive HTTP analyzer: canonical probe verification, frontier recommendations, dictionary mining | HTTP/JSON, sqlite3 CLI |
+
+#### T5.1 HTTP API skeleton
+
+- New `internal/api/` package: `server.go`, `handlers.go`, `types.go`, `trust.go`.
+- Endpoints (path-prefix `/v2/*`):
+  - `GET  /v2/health` — liveness + API version.
+  - `GET  /v2/state` — model_id, frontier_count, active_count, coverage_size.
+  - `GET  /v2/frontiers/active` — priority-ordered active frontiers + per-frontier
+    recommended seeds + dictionary tokens.
+  - `POST /v2/corpus/add` — pfuzzer reports new candidate seed; Orchestra
+    triggers `SubprocessProbe` verification and stores verified bitmap.
+  - `POST /v2/coverage/report` — pfuzzer reports bitmap observation;
+    Orchestra updates `capability_observations`.
+  - `GET  /v2/dictionary` — full corpus dictionary from Program Model.
+- `cmd/orchestra-coordinator/main.go` registers `/v2/*` routes alongside existing
+  `/v1/*` (deprecated, retained 1 release cycle).
+
+#### T5.2 Trust boundary
+
+- pfuzzer-reported bitmaps are stored in `MemoryStore` as **hint bitmaps** for
+  dedup.
+- All frontier state, bitmap union, and scheduler decisions use
+  **verified bitmaps** only (SubprocessProbe output).
+- `/v2/corpus/add` response includes verification status; pfuzzer relies on
+  this rather than its own bitmap for scheduling decisions.
+
+#### T5.3 Scheduler HTTP exposure
+
+- `Scheduler.RecommendFrontiers(coverage, allFrontiers) []FrontierRecommendation`
+  exposed via `GET /v2/frontiers/active`.
+- `Scheduler.RecordCoverageReport(fuzzerID, jobID, observed, attemptedFrontiers,
+  crossedFrontiers)` consumes `POST /v2/coverage/report`.
+
+#### T5.4 pfuzzer HTTP client
+
+- New `pfuzzer/FuzzerOrchestra.{h,cpp}` (replaces V1's `FuzzerHFC.cpp`).
+- Uses `cpp-httplib` (same dependency as V1).
+- Calls `/v2/*` endpoints at startup, on candidate seed observation, and
+  after coverage intervals.
+- V1 client (`FuzzerHFC.cpp`) retained 1 release cycle with `Deprecation`
+  marker.
+
+#### T5.5 Cleanup
+
+- `internal/pilot/` removed (per user "直接去掉" decision; obsolete under
+  passive-analyzer architecture).
+- `internal/worker/adapter.go` retained as `// Optional:` marker for future
+  offline reproducibility tests.
+
+### T6: pfuzzer linkage
+
+OSS-Fuzz builds must link against the prebuilt pfuzzer `libFuzzer.a`, not the
+upstream libFuzzer:
+
+| Path | Status |
+|---|---|
+| `third_party/pfuzzer/` | Pfuzzer source as git submodule (gitignored) |
+| `third_party/pfuzzer/build/libFuzzer.a` | Output of `cmd/orchestra-pfuzzer-build` |
+| `pfuzzer/FuzzerOrchestra.cpp` | New HTTP client to `/v2/*` |
+| `pfuzzer/FuzzerHFC.cpp` | V1 client (deprecated) |
+
+Effects on V2 components:
+
+- `internal/ossfuzz/plan.go::BuildProfile` mounts pfuzzer prebuilt
+  `libFuzzer.a` and injects `LIB_FUZZING_ENGINE=/opt/pfuzzer/libFuzzer.a`.
+- `cmd/orchestra-ossfuzz/main.go::build` invokes
+  `cmd/orchestra-pfuzzer-build` before `Planner.BuildProfile`.
+- `scripts/orchestra-ossfuzz-entrypoint.sh` no longer requires `LIB_FUZZING_ENGINE`
+  to be a `-fsanitize=fuzzer` token; accepts a path to `.a`.
+
+Built binary semantics (DESIGN §4.1a):
+
+- `./binary /seed` — libFuzzer single-seed replay (V2 SubprocessProbe).
+- `./binary -fork=N -fuzzers=afl,libfuzzer /corpus` — pfuzzer multi-engine
+  coordination (pfuzzer runtime).
+
+Edge IDs remain identical across both modes because conditional branch
+IR is unchanged.
+
+### T7: pfuzzer HTTP integration verification
+
+Status: not started.
+
+Goal: pfuzzer client (`FuzzerOrchestra.cpp`) actually drives multi-fuzzer
+campaigns against Orchestra on all 21 OSS-Fuzz targets.
+
+Verification gates:
+- Multi-engine fork mode (`-fork=4 -fuzzers=afl,libfuzzer`) runs end-to-end
+  on zlib (smallest), openssl (largest), and 5 mid-sized targets.
+- Bitmap hint from pfuzzer is overridden by SubprocessProbe-verified bitmap
+  on first observation.
+- Capability observations accumulate in `campaign.sqlite` across the run.
+- Scheduler recommendations steer pfuzzer toward active frontiers; fuzzing
+  throughput improves vs. random seed selection baseline.
+- pfuzzer crashes and restarts; `GET /v2/state` recovery preserves state.
+
+### T8: performance validation
+
+Status: not started.
+
+Goal: confirm the V2 performance contract (DESIGN §5.5, CONTRACTS §12):
+
+- bitmap union is O(K), not O(N²).
+- frontier evaluation is O(1).
+- SubprocessProbe verify is at-most-once.
+- HTTP latency budget is met (recommendation response < 50 ms).
+
+Methods:
+- microbenchmarks on zlib (small) and openssl (large).
+- 1000-seed corpus, measure per-seed latency distribution.
+- Compare against V1's libFuzzer-merge baseline.
+
+### T9: mapping quality to 90%
+
+Status: not started.
+
+Goal: column-disambiguated CodeQL→LLVM mapping for same-line branches.
+Current rate: 82.7% exact (848/1025 frontiers for zlib).
+
+Methods:
+- emit `column` in Guards.ql predicate fingerprint.
+- require `(file, line, column)` triple for `exact` match.
+- re-evaluate zlib ambiguous frontiers (172/1025 = 16.8%).
+
+Gate: re-built zlib Program Model shows ≥ 90% exact.
 
 ## 4. Milestones
 
@@ -197,15 +319,12 @@ Exit:
 
 Status: **passed**.
 
-Implemented: side-by-side packages, pinned manifest, generic adapter, profiles,
-manifest generation, smoke-test command, worker interface.
+Evidence: 21 OSS-Fuzz targets built through pinned OSS-Fuzz definitions;
+CodeQL DBs finalized; base-runner smoke tests exit 0; artifact manifests
+validate against JSON schema; fingerprints reproducible; entrypoint working-dir
+bug fixed.
 
-Evidence: zlib-uncompress semantic-canonical build executed, CodeQL DB
-finalized (177,344 LoC, 214 functions, 1,097 guards, 1,243 calls), base-runner
-smoke test exit 0, artifact manifest validated against JSON schema, fingerprint
-reproducible. Entrypoint working-dir bug fixed.
-
-Remaining: model_id pending Program Model builder (M2).
+Remaining: model_id + pfuzzer hash fields pending (M2/T6).
 
 ### M1 -- CodeQL feasibility
 
@@ -215,10 +334,6 @@ Implemented: QL pack with enriched Functions (harness reachability, C linkage),
 Calls (confidence), Guards (guard kind, operator, type, constant flag),
 Constants (guard predicate literals). Golden fixture test. Deterministic
 fact export with timing and result counts.
-
-Evidence: golden fixture passes (6 functions, 9 calls, 5 guards, constants
-captured); zlib export produces 214 functions, 1,243 calls, 1,097 guards,
-82 constants.
 
 Missing gate: local input dependency analysis, indirect/global analysis,
 combined-build compatibility evidence, manual precision/coverage review,
@@ -235,10 +350,8 @@ and exact/ambiguous/unmapped classification; edge deduplication by edge_id.
 Evidence: zlib-uncompress produces 3,072 unique runtime edges and 1,025 unique
 frontiers. 848 exact (82.7%), 172 ambiguous (16.8%), 5 unmapped (0.5%).
 
-Missing gate: 90% exact mapping not yet reached (82.7%). The 172 ambiguous
-frontiers are mostly same-line branches where column disambiguation would
-help. T4 (canonical replay vertical slice) can proceed with the 848 exact
-frontiers while the mapping quality is improved.
+Missing gate: 90% exact mapping not yet reached. Column disambiguation is
+the path forward (T9).
 
 ### M3 -- incremental Seed Store
 
@@ -280,42 +393,74 @@ from Seed Records, deterministic event replay.
 
 ### M5 -- seed, capability, and scheduler
 
-Status: **implemented (explainable linear policy)**.
+Status: **implemented (explainable linear policy; HTTP-exposed)**.
 
 Implemented: `CapabilityObservation` (fuzzerID, attempted/crossed frontiers,
 job/novel delta, CPU seconds), `SchedulerConfig` with weights for crossing
 rate, coverage efficiency, and starvation; `Scheduler.SelectFrontier`
 combines fuzzer score + starvation with jitter; `Scheduler.SelectSeeds`
 scores seeds by frontier-edge overlap; `ExtractDictionary` returns
-predicate-derived tokens.
+predicate-derived tokens; `Scheduler.RecommendFrontiers` exposes a
+priority-ordered frontier list to pfuzzer via `GET /v2/frontiers/active`;
+`Scheduler.RecordCoverageReport` consumes `POST /v2/coverage/report`.
 
-Evidence: `TestScoreFuzzerNew` (neutral prior=0.5),
-`TestScoreFuzzerWithObservations` (good=0.83, bad=0.005),
-`TestSelectFrontier` (f3 selected due to 30-min starvation),
-`TestSelectSeeds` (correct ordering by frontier-edge overlap),
-`TestExtractDictionary`, `TestBuildDispatch`.
+Evidence: 6 unit tests pass (TestScoreFuzzerNew, TestScoreFuzzerWithObservations,
+TestSelectFrontier, TestSelectSeeds, TestExtractDictionary, TestBuildDispatch).
 
-Missing: explainable policy with ablations, evidence-backed capability
-estimates from real fuzzers.
+Missing: real pfuzzer HTTP integration test (deferred to M7).
 
-### M6 -- end-to-end pilot
+### M6 -- end-to-end pilot (pfuzzer-driven)
 
-Status: **implemented and verified**.
+Status: **interface removed (pilot package deleted; refactor pending)**.
 
-Implemented: `pilot.PilotConfig` integrates ModelAwareState + scheduler +
-campaign.Store across multiple targets and fuzzers. End-to-end pipeline:
-measure seed → persist Seed Record → dispatch → merge from seeds →
-record capability observation → append events.
+The original V2 pilot was an in-process self-driving demonstration. With the
+new passive-analyzer architecture (T5), V2 does not drive fuzzing. The pilot
+code (`internal/pilot/`) is removed per the user's "直接去掉" decision.
 
-Evidence: `TestPilotSingleTarget` (2 frontiers, 2 dispatches, 2 crossings),
-`TestPilotMultiTargetMultiFuzzer` (2 targets × 2 fuzzers: libfuzzer on
-zlib with 1 frontier, afl on jsoncpp with 2 frontiers, total 3 seeds,
-3 dispatches, 3 crossings).
+The end-to-end pipeline now lives in:
+- `cmd/orchestra-coordinator` (HTTP server, all `/v2/*` endpoints).
+- `pfuzzer/FuzzerOrchestra.cpp` (HTTP client, calling `/v2/*` endpoints).
 
-Missing: real subprocess probe integration, measured Coordinator/replay
-overhead and backlog.
+Missing: actual `FuzzerOrchestra.cpp` integration in pfuzzer build
+(deferred to T7 verification).
 
-### M7 -- paper-scale evaluation
+### M7 -- pfuzzer HTTP integration verification
+
+Status: **not started**.
+
+Goal: pfuzzer client (`FuzzerOrchestra.cpp`) actually drives multi-fuzzer
+campaigns against Orchestra on all 21 OSS-Fuzz targets.
+
+Verification gates:
+- Multi-engine fork mode (`-fork=4 -fuzzers=afl,libfuzzer`) runs end-to-end.
+- Bitmap hint from pfuzzer is overridden by SubprocessProbe-verified bitmap.
+- Capability observations accumulate in `campaign.sqlite`.
+- Scheduler recommendations steer pfuzzer toward active frontiers; fuzzing
+  throughput improves vs. random seed selection baseline.
+- pfuzzer crashes and restarts; `GET /v2/state` recovery preserves state.
+
+### M8 -- performance validation
+
+Status: **not started**.
+
+Goal: confirm the V2 performance contract (DESIGN §5.5, CONTRACTS §12):
+- bitmap union is O(K), not O(N²).
+- frontier evaluation is O(1).
+- SubprocessProbe verify is at-most-once.
+- HTTP latency budget is met.
+
+Methods: microbenchmarks + 1000-seed corpus latency distribution.
+
+### M9 -- mapping quality to 90%
+
+Status: **not started**.
+
+Goal: column-disambiguated CodeQL→LLVM mapping for same-line branches.
+Current rate: 82.7% exact (848/1025 frontiers for zlib).
+
+Gate: re-built zlib Program Model shows ≥ 90% exact.
+
+### M10 -- paper-scale evaluation
 
 Status: **not started**.
 
@@ -329,7 +474,7 @@ one-command artifact/report generation.
 
 ### CodeQL/LLVM golden fixtures
 
-Cover signed/unsigned comparisons, magic numbers, enums, bit masks,
+Cover signed/unsigned comparisons, magic numbers, enums, bit maps,
 modulo/ranges, string/memory comparisons, length checks, macros, same-line
 conditions, `switch`, short circuiting, function pointers/callbacks, C++
 overloads/virtual calls/templates/inlining, and unmodeled interprocedural flow.
@@ -342,9 +487,10 @@ status, and canonical execution.
 - incremental union equals full fixed-corpus replay;
 - deterministic seeds replay to stable results;
 - nondeterministic targets are detected and isolated;
-- identical bytes from different fuzzers produce one Seed Record;
+- identical bytes from different fuzzers produce one Seed Record
+  (after SubprocessProbe verification);
 - different concurrent completion orders produce the same final union and
-  correct versioned attribution.
+  correct versioned attribution (from verified bitmaps only).
 
 ### Replayability
 
@@ -358,7 +504,9 @@ coverage, frontier state, observations, and scheduling candidates.
 - identical fingerprints are compared for reproducibility;
 - semantic-canonical and split semantic/canonical profiles have equivalent
   guard/edge sets if fallback is required;
-- OSS-Fuzz upgrades are explicit and rerun the complete matrix.
+- OSS-Fuzz upgrades are explicit and rerun the complete matrix;
+- **fuzzer binaries are pfuzzer-linked** (T6) and support both single-engine
+  and multi-engine modes.
 
 ## 6. Handoff completion rule
 
