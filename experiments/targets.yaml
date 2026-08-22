@@ -24,14 +24,389 @@ targets:
       sanitizer: address
       architecture: x86_64
       environment:
-        # The LLVM pass can be injected here once its shared object is built.
-        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.json
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
     engines:
       - name: engine-libfuzzer
         engine: libfuzzer
         sanitizer: address
         architecture: x86_64
-      - name: engine-afl
-        engine: afl
+
+  - id: bloaty
+    oss_fuzz_project: bloaty
+    fuzz_target: fuzz_target
+    language: c++
+    primary_source_dir: /src/bloaty
+    source_revision: 4a601b636e2347322d0371c8bf8ca5eaeaca4bac
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: curl
+    oss_fuzz_project: curl
+    fuzz_target: curl_fuzzer_http
+    language: c++
+    primary_source_dir: /src/curl_fuzzer
+    source_revision: fba41009be0a661f7f74f9f1b541b774d00d91fd
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: freetype2
+    oss_fuzz_project: freetype2
+    fuzz_target: ftfuzzer
+    language: c++
+    primary_source_dir: /src/freetype2-testing
+    source_revision: 35619fdf3afdceebe227009116b35e6751744c81
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: harfbuzz
+    oss_fuzz_project: harfbuzz
+    fuzz_target: hb-shape-fuzzer
+    language: c++
+    primary_source_dir: /src/harfbuzz
+    source_revision: 29a47dcd83aaa4b2ffffa3b201c008b872306711
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: jsoncpp
+    oss_fuzz_project: jsoncpp
+    fuzz_target: jsoncpp_fuzzer
+    language: c++
+    primary_source_dir: /src/jsoncpp
+    source_revision: b511d9e64956db998b74909df112ac8c8f41d6ff
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: lcms
+    oss_fuzz_project: lcms
+    fuzz_target: cms_transform_fuzzer
+    language: c++
+    primary_source_dir: /src/lcms
+    source_revision: 23994d72c6323ca466cff85765b08011a2ec0bac
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: libjpeg-turbo
+    oss_fuzz_project: libjpeg-turbo
+    fuzz_target: cjpeg_fuzzer
+    language: c
+    primary_source_dir: /src
+    source_revision: af9c1c268520a29adf98cad5138dafe612b3d318
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: libpcap
+    oss_fuzz_project: libpcap
+    fuzz_target: fuzz_both
+    language: c++
+    primary_source_dir: /src
+    source_revision: d08be3e1015924892e9f70d6ef3a30aacdb6d130
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: libpng
+    oss_fuzz_project: libpng
+    fuzz_target: libpng_read_fuzzer
+    language: c++
+    primary_source_dir: /src/libpng
+    source_revision: 54c127584fe1f9b4fbfb5893cdbfc8fb5570e6bc
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: libxml2
+    oss_fuzz_project: libxml2
+    fuzz_target: xml
+    language: c++
+    primary_source_dir: /src/libxml2
+    source_revision: 22f9d730898d2dfcc03a484e65e1f8fc3675225f
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: libxslt
+    oss_fuzz_project: libxslt
+    fuzz_target: xpath
+    language: c++
+    primary_source_dir: /src/libxslt
+    source_revision: c28480107f89e08fb75f13846688591394b9dad6
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: mbedtls
+    oss_fuzz_project: mbedtls
+    fuzz_target: fuzz_dtlsclient
+    language: c++
+    primary_source_dir: /src/mbedtls
+    source_revision: 5a3d0214b3c8bd42541cfd1fa1377ef6ab522ceb
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: openssl
+    oss_fuzz_project: openssl
+    fuzz_target: x509
+    language: c++
+    primary_source_dir: /src/openssl
+    source_revision: ca95d136d238e5ead679df8a7573ecccef37cc0e
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: openthread
+    oss_fuzz_project: openthread
+    fuzz_target: ot-ip6-send-fuzzer
+    language: c++
+    primary_source_dir: /src/openthread
+    source_revision: 64e064ffc1883b4e54237d379630366e2a3c4bc0
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: proj4
+    oss_fuzz_project: proj4
+    fuzz_target: proj_crs_to_crs_fuzzer
+    language: c++
+    primary_source_dir: /src/PROJ
+    source_revision: ad3f88071f4132034a3cdb50fb36ef5f2d9828d1
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: re2
+    oss_fuzz_project: re2
+    fuzz_target: re2_fuzzer
+    language: c++
+    primary_source_dir: /src/re2
+    source_revision: 61c4644171ee6b480540bf9e569cba06d9090b4b
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: sqlite3
+    oss_fuzz_project: sqlite3
+    fuzz_target: ossfuzz
+    language: c++
+    primary_source_dir: /src/sqlite3
+    source_revision: f033ca7e6adbc824930a147b95daa189c8bb3f5c
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: systemd
+    oss_fuzz_project: systemd
+    fuzz_target: fuzz-link-parser
+    language: c++
+    primary_source_dir: /src/systemd
+    source_revision: 20332d7caf5f57c081d1b6041289477c11d9a380
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: vorbis
+    oss_fuzz_project: vorbis
+    fuzz_target: decode_fuzzer
+    language: c++
+    primary_source_dir: /src/vorbis
+    source_revision: 851cce991da34adf5e1f3132588683758a6369ec
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
+        sanitizer: address
+        architecture: x86_64
+
+  - id: woff2
+    oss_fuzz_project: woff2
+    fuzz_target: convert_woff2ttf_fuzzer
+    language: c++
+    primary_source_dir: /src/woff2
+    source_revision: 0f4d304faa1c62994536dc73510305c7357da8d4
+    semantic:
+      name: semantic-canonical
+      engine: libfuzzer
+      sanitizer: address
+      architecture: x86_64
+      environment:
+        ORCHESTRA_EDGE_MANIFEST: /out/orchestra-edge-manifest.jsonl
+    engines:
+      - name: engine-libfuzzer
+        engine: libfuzzer
         sanitizer: address
         architecture: x86_64

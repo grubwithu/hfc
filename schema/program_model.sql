@@ -59,7 +59,7 @@ CREATE TABLE runtime_edges (
     line INTEGER NOT NULL,
     column INTEGER NOT NULL,
     successor_ordinal INTEGER NOT NULL,
-    ir_fingerprint TEXT NOT NULL UNIQUE
+    ir_fingerprint TEXT NOT NULL
 );
 
 CREATE TABLE frontiers (
