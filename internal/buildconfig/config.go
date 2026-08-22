@@ -133,8 +133,9 @@ func (c *Config) Validate() error {
 		if t.Language != "c" && t.Language != "c++" {
 			problems = append(problems, fmt.Errorf("%s.language must be c or c++", prefix))
 		}
-		if !strings.HasPrefix(filepath.Clean(t.PrimarySourceDir), "/src/") {
-			problems = append(problems, fmt.Errorf("%s.primary_source_dir must be below /src", prefix))
+		cleanDir := filepath.Clean(t.PrimarySourceDir)
+		if cleanDir != "/src" && !strings.HasPrefix(cleanDir, "/src/") {
+			problems = append(problems, fmt.Errorf("%s.primary_source_dir must be /src or below /src", prefix))
 		}
 		if !isPinnedRevision(t.SourceRevision) {
 			problems = append(problems, fmt.Errorf("%s.source_revision must be a pinned hexadecimal commit", prefix))

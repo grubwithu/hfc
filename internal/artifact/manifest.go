@@ -24,13 +24,21 @@ type Manifest struct {
 	ProjectDefinitionHash string            `json:"project_definition_hash,omitempty"`
 	FuzzTarget            string            `json:"fuzz_target"`
 	SourceRevision        string            `json:"source_revision"`
+	SourceTreeHash        string            `json:"source_tree_hash,omitempty"`
 	PrimarySourceDir      string            `json:"primary_source_dir"`
 	Profile               string            `json:"profile"`
 	Engine                string            `json:"engine"`
 	Sanitizer             string            `json:"sanitizer"`
 	Architecture          string            `json:"architecture"`
+	CompilerVersion       string            `json:"compiler_version,omitempty"`
+	CompilerFlagsHash     string            `json:"compiler_flags_hash,omitempty"`
 	DockerImage           string            `json:"docker_image"`
 	DockerImageDigest     string            `json:"docker_image_digest,omitempty"`
+	CodeQLVersion         string            `json:"codeql_version,omitempty"`
+	QLPackVersion         string            `json:"ql_pack_version,omitempty"`
+	LLVMPassVersion       string            `json:"llvm_pass_version,omitempty"`
+	ModelSchemaVersion    int               `json:"model_schema_version,omitempty"`
+	ModelID               string            `json:"model_id,omitempty"`
 	BinaryPath            string            `json:"binary_path"`
 	BinarySHA256          string            `json:"binary_sha256"`
 	CodeQLDatabasePath    string            `json:"codeql_database_path,omitempty"`

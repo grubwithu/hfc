@@ -29,6 +29,20 @@ func TestSemanticPlanWrapsOSSFuzzCompileInsideContainer(t *testing.T) {
 	}
 }
 
+func TestBuildImageUsesCachedBaseImagesWithoutPrompting(t *testing.T) {
+	planner, target := testPlanner(t)
+	command := planner.BuildImage(target)
+	want := []string{
+		"/tmp/oss-fuzz/infra/helper.py",
+		"build_image",
+		"--no-pull",
+		"zlib",
+	}
+	if strings.Join(command.Args, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("build image arguments = %#v, want %#v", command.Args, want)
+	}
+}
+
 func TestCheckProfileUsesMatchingBaseRunnerTag(t *testing.T) {
 	planner, target := testPlanner(t)
 	checkout := t.TempDir()

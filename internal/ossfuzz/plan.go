@@ -66,7 +66,7 @@ func (p Planner) BuildImage(target buildconfig.Target) Command {
 	helper := filepath.Join(p.Config.OSSFuzz.Checkout, "infra", "helper.py")
 	return Command{
 		Program: p.Config.OSSFuzz.Python,
-		Args:    []string{helper, "build_image", target.OSSFuzzProject},
+		Args:    []string{helper, "build_image", "--no-pull", target.OSSFuzzProject},
 		Dir:     p.Config.OSSFuzz.Checkout,
 	}
 }
