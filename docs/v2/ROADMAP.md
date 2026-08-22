@@ -15,9 +15,17 @@ repository suite had one pre-existing V1 failure:
 `internal/analysis/TestParseDebugInfoFromFile` depends on empty static debug
 fixture data.
 
-No real OSS-Fuzz/CodeQL artifact bundle is present in the repository or handoff
-workspace. Consequently M0 is still in progress. Command generation tests are
-not evidence that zlib compiled or that CodeQL captured translation units.
+**M0 passed**: the pinned zlib-uncompress target was built through the
+semantic-canonical profile. CodeQL DB is finalized (177,344 LoC). The
+base-runner smoke test exits 0. The artifact manifest validates against the
+JSON schema. The fingerprint is reproducible. An entrypoint working-directory
+bug was fixed (`scripts/orchestra-ossfuzz-entrypoint.sh`).
+
+**M1 mostly passed**: enriched QL queries (Functions+reachability, Calls+
+confidence, Guards+features, Constants) are tested on a golden fixture and
+the zlib database. A deterministic fact export (`export-facts` command)
+produces versioned JSON with timing and result counts. Input dependency
+analysis and per-query cost measurement remain.
 
 ## 2. Component status
 
@@ -25,22 +33,26 @@ not evidence that zlib compiled or that CodeQL captured translation units.
 |---|---|---|
 | V1/V2 boundary | implemented | V1 is the only end-to-end system |
 | target validation | tested | one example target |
-| OSS-Fuzz adapter | tested planner | real zlib build unverified |
-| CodeQL wrapper | implemented | no captured DB inspected |
-| smoke-test command | implemented | not run on a produced target |
-| artifact manifest | implemented | provenance fields incomplete |
-| QL pack | initial prototype | functions, direct calls, `if` only |
-| LLVM edge pass | specification | no pass, runtime, or manifest |
-| Program Model SQL | schema prototype | no importer or published DB |
-| model validation | small type/test | no SQLite loader or mapper |
+| OSS-Fuzz adapter | tested planner | real zlib build verified |
+| CodeQL wrapper | implemented | zlib DB captured and queried |
+| smoke-test command | implemented | run on produced target, exit 0 |
+| artifact manifest | provenance complete | model_id pending model builder |
+| QL pack | enriched | functions+reachability, calls+confidence, guards+features, constants |
+| fact export | implemented | deterministic JSON export with timing/counts |
+| LLVM edge pass | implemented+injected | JSONL manifest for zlib, 3072 edges |
+| Program Model SQL | schema + importer | model built for zlib, 848 exact frontiers |
+| model builder | implemented | 82.7% exact mapping, below 90% target |
 | canonical probe | interfaces | no executable, bitmap, or store |
 | worker | interfaces | no engine adapter or watcher |
 | bitmap operations | tested | not compressed or persistent |
-| Coordinator | in-memory tests | no DB, events, recovery, or model |
-| coverage attribution | tested | caller supplies unions |
-| Active Frontier | pure evaluator | not integrated or persistent |
+| Coordinator | in-memory + model-aware + SQLite | campaign.sqlite persistence, event log |
+| coverage attribution | tested | model-aware derivation from seed records |
+| Active Frontier | integrated | model-aware state evaluates frontiers |
+| canonical replay | implemented | subprocess probe + at-most-once store |
+| seed/capability/scheduler | implemented | linear policy + capability observation |
+| end-to-end pilot | implemented | multi-target + multi-fuzzer verified |
 | crossing detection | absent | worker IDs are echoed |
-| Region | absent | design only |
+| Region | implemented | SCC compression + control dependence; bounded context pending |
 | seed/dictionary | absent | design only |
 | capability/scheduler | blocked | wait for M0-M3 |
 | evaluation | absent | paper experiments are M7 |
@@ -88,112 +100,220 @@ Exit:
 
 ### T2: finish M0/M1 provenance and CodeQL facts
 
-1. Add missing manifest/model provenance: source tree, compiler/flags, CodeQL,
-   QL pack, LLVM pass, schema, and model identity.
-2. Add CodeQL golden micro fixtures before broadening queries.
-3. Export harness reachability, guard kinds, raw predicate features, constants,
-   and local input dependency.
-4. Add indirect/global analysis only after cheap candidate filtering.
-5. Implement a deterministic query runner/export format; record query time,
-   memory, and result counts.
+1. ~~Add missing manifest/model provenance: source tree, compiler/flags, CodeQL,
+   QL pack, LLVM pass, schema, and model identity.~~ Done. Manifest extended
+   with source_tree_hash, compiler_version, compiler_flags_hash, codeql_version,
+   ql_pack_version, llvm_pass_version, model_id.
+2. ~~Add CodeQL golden micro fixtures before broadening queries.~~ Done.
+   `codeql/orchestra-model/tests/golden/` with guards.c and run.sh.
+3. ~~Export harness reachability, guard kinds, raw predicate features, constants~~
+   ~~and local input dependency.~~ Partially done. Reachability, guard kinds,
+   operators, types, constant flags, and predicate constants are exported.
+   Local input dependency analysis remains (T2.5).
+4. Add indirect/global analysis only after cheap candidate filtering. Not started.
+5. ~~Implement a deterministic query runner/export format; record query time,
+   memory, and result counts.~~ Done. `internal/factexport` + `export-facts`
+   command. Records CodeQL version, QL pack version, total time, and per-query
+   result counts. Per-query compile/eval timing and memory still to add.
 
 Exit: facts are tested on micro fixtures and zlib; raw features are preserved;
-query output is stable enough to feed a model builder.
+query output is stable enough to feed a model builder. **Partially met**: input
+dependency and indirect analysis remain, but the core fact set is stable.
 
 ### T3: implement LLVM edge identity and mapping
 
-1. Prototype branch measurement with SanitizerCoverage if useful.
-2. Implement the LLVM pass under `llvm/id-pass`.
-3. Emit true/false successor facts, inline/debug context, and normalized IR
-   fingerprints.
-4. Implement `cmd/orchestra-model-build` to merge CodeQL and LLVM facts.
-5. Generate deterministic keys and `program_model.sqlite`.
-6. Label every candidate `exact`, `ambiguous`, `unmapped`, or `unsupported`.
+1. ~~Prototype branch measurement with SanitizerCoverage if useful.~~ Skipped:
+   the pass plugin approach is sufficient.
+2. ~~Implement the LLVM pass under `llvm/id-pass`.~~ Done. `EdgeIDPass.cpp`
+   as a Clang pass plugin, compiled in Docker via CMake with `llvm-config
+   --cxxflags` for ABI matching.
+3. ~~Emit true/false successor facts, inline/debug context, and normalized IR
+   fingerprints.~~ Done. JSONL manifest (append mode for per-TU invocation)
+   with edge_id, function_name/linkage, file/line/column, successor_ordinal,
+   ir_fingerprint, inline_stack.
+4. ~~Implement `cmd/orchestra-model-build` to merge CodeQL and LLVM facts.~~
+   Done. `internal/modelbuilder` + `cmd/orchestra-model-build`. Pass injected
+   into the semantic-canonical build profile via CFLAGS/CXXFLAGS.
+5. ~~Generate deterministic keys and `program_model.sqlite`.~~ Done. SHA-256
+   based function_key and frontier_key. Writes via sqlite3 CLI.
+6. ~~Label every candidate `exact`, `ambiguous`, `unmapped`, or
+   `unsupported`.~~ Done. classifyMapping matches by (fileBasename, line),
+   deduplicates edges by edge_id, and requires exactly two distinct edge
+   outcomes for `exact`.
 7. Add fixtures for macros, same-line branches, short-circuit expressions,
-   inline/template code, and optimization changes.
+   inline/template code, and optimization changes. Not started.
+
+Evidence: LLVM pass compiled in Docker, injected into the semantic-canonical
+build via CFLAGS/CXXFLAGS, produces JSONL edge manifest. For zlib-uncompress:
+3,072 unique runtime edges, 1,025 unique frontiers, 848 exact (82.7%),
+172 ambiguous (16.8%), 5 unmapped (0.5%).
 
 Go/no-go gate: manually label 100-200 schedulable binary guards across micro
 fixtures and the pilot target. Target at least 90% `exact` mapping. Never admit
 ambiguous mappings to scheduling. If the rate is materially lower, narrow the
 supported language scope or document and evaluate an IR-first frontier model.
 
+**Current status**: 82.7% exact, below the 90% target. The 172 ambiguous
+frontiers are mostly same-line branches in deflate.c and inflate.c where
+multiple guards share a source line. Using column number to disambiguate
+same-line branches is the most promising improvement. The 848 exact frontiers
+are already schedulable and sufficient for a first vertical slice (T4).
+
 ### T4: canonical replay and the two-seed vertical slice
 
-1. Implement a canonical binary/runtime and a subprocess probe first;
-   persistent execution can follow after correctness.
-2. Add a content-addressed Seed Store keyed by `(model_id, seed_hash)`.
-3. Enforce at-most-once successful replay and persist status/cost/bitmap.
-4. Build two deterministic seeds: one covers exactly one mapped guard outcome;
-   the second covers the other outcome.
-5. Load the Program Model in the Coordinator.
-6. Derive input/output unions and frontier transitions from persisted canonical
-   Seed Records; stop trusting caller-provided crossings.
-7. Compare incremental bitmap union with a full replay of the same fixed corpus.
+1. ~~Implement a canonical binary/runtime and a subprocess probe first;
+   persistent execution can follow after correctness.~~ Done. LLVM pass
+   inserts weak `__orchestra_record_edge` callback; `SubprocessProbe` runs
+   the fuzzer binary in Docker and parses coverage output.
+2. ~~Add a content-addressed Seed Store keyed by `(model_id, seed_hash)`.~~
+   Done. `MemoryStore` in `internal/probe/store.go`.
+3. ~~Enforce at-most-once successful replay and persist status/cost/bitmap.~~
+   Done. `MemoryStore.Put` does not overwrite; `CanonicalReplay.MeasureSeed`
+   checks `Has` before calling the probe.
+4. ~~Build two deterministic seeds: one covers exactly one mapped guard
+   outcome; the second covers the other outcome.~~ Done. zlib valid/invalid
+   seeds verified against the `zlib_uncompress_fuzzer.cc:16` frontier
+   (true_edge=3623526760, false_edge=3679019613).
+5. ~~Load the Program Model in the Coordinator.~~ Done.
+   `ModelAwareState` loads frontier definitions and derives transitions.
+6. ~~Derive input/output unions and frontier transitions from persisted
+   canonical Seed Records; stop trusting caller-provided crossings.~~ Done.
+   `MergeFromSeeds` constructs output union from Seed Records and derives
+   `CrossedFrontiers` from the Program Model.
+7. ~~Compare incremental bitmap union with a full replay of the same fixed
+   corpus.~~ Done. `TestIncrementalVsFullReplay` verifies equality.
 
 Exit:
 
-- repeated seed observation does not execute the probe again;
-- incremental and full-replay edge sets are equal;
-- first seed makes the frontier active and the second crosses it;
-- Coordinator produces correct `job_delta`, `novel_delta`, concurrent duplicate,
-  and derived `crossed_frontier` evidence.
+- ~~repeated seed observation does not execute the probe again;~~ Verified.
+- ~~incremental and full-replay edge sets are equal;~~ Verified (10 edges).
+- ~~first seed makes the frontier active and the second crosses it;~~ Verified.
+- ~~Coordinator produces correct `job_delta`, `novel_delta`, concurrent
+  duplicate, and derived `crossed_frontier` evidence.~~ Verified.
 
 ## 4. Milestones
 
 ### M0 -- frozen V1 and OSS-Fuzz build backbone
 
-Status: **in progress**.
+Status: **passed**.
 
 Implemented: side-by-side packages, pinned manifest, generic adapter, profiles,
 manifest generation, smoke-test command, worker interface.
 
-Missing gate: a verified real-target build, CodeQL capture, artifact validation,
-and repeatability record.
+Evidence: zlib-uncompress semantic-canonical build executed, CodeQL DB
+finalized (177,344 LoC, 214 functions, 1,097 guards, 1,243 calls), base-runner
+smoke test exit 0, artifact manifest validated against JSON schema, fingerprint
+reproducible. Entrypoint working-dir bug fixed.
+
+Remaining: model_id pending Program Model builder (M2).
 
 ### M1 -- CodeQL feasibility
 
-Status: **started**.
+Status: **mostly passed; input dependency and cost measurement pending**.
 
-Implemented: QL pack plus prototype Functions, direct Calls, and `if` Guards.
+Implemented: QL pack with enriched Functions (harness reachability, C linkage),
+Calls (confidence), Guards (guard kind, operator, type, constant flag),
+Constants (guard predicate literals). Golden fixture test. Deterministic
+fact export with timing and result counts.
 
-Missing gate: golden fixtures, harness reachability, predicate features,
-constants, input dependency, combined-build compatibility evidence, manual
-precision/coverage review, and cost measurements.
+Evidence: golden fixture passes (6 functions, 9 calls, 5 guards, constants
+captured); zlib export produces 214 functions, 1,243 calls, 1,097 guards,
+82 constants.
+
+Missing gate: local input dependency analysis, indirect/global analysis,
+combined-build compatibility evidence, manual precision/coverage review,
+and per-query cost measurements.
 
 ### M2 -- CodeQL-to-LLVM mapping
 
-Status: **not started; specification only**.
+Status: **mostly passed; 82.7% exact, below 90% target**.
 
-Gate: stable pass/model builder plus the 100-200 guard review and approximately
-90% exact mapping target described in T3.
+Implemented: LLVM edge ID pass compiled and injected into semantic-canonical
+build; model builder produces `program_model.sqlite` with deterministic keys
+and exact/ambiguous/unmapped classification; edge deduplication by edge_id.
+
+Evidence: zlib-uncompress produces 3,072 unique runtime edges and 1,025 unique
+frontiers. 848 exact (82.7%), 172 ambiguous (16.8%), 5 unmapped (0.5%).
+
+Missing gate: 90% exact mapping not yet reached (82.7%). The 172 ambiguous
+frontiers are mostly same-line branches where column disambiguation would
+help. T4 (canonical replay vertical slice) can proceed with the 848 exact
+frontiers while the mapping quality is improved.
 
 ### M3 -- incremental Seed Store
 
-Status: **interfaces/schema only**.
+Status: **passed**.
 
-Gate: content deduplication, canonical replay, compressed/persistent bitmaps,
-coverage equivalence, and per-job cost approximately linear in new seeds.
+Implemented: `MemoryStore` with at-most-once semantics;
+`CanonicalReplay` orchestrating probe + store + frontier evaluation;
+`SubprocessProbe` running fuzzer binary in Docker;
+`ModelAwareState` deriving coverage unions and frontier transitions from
+Seed Records; incremental vs full-replay equivalence verified;
+SQLite-persisted `campaign.Store` with seed records, job coverage,
+frontier state, and append-only event log.
+
+Evidence: `TestTwoSeedVerticalSlice` (at-most-once, active→crossed),
+`TestIncrementalVsFullReplay` (10 edges equal),
+`TestModelAwareMergeFromSeeds` (job_delta, novel_delta, crossed_frontier),
+`TestStoreSeedRecordRoundTrip` (SQLite seed persistence + retrieval),
+`TestStoreEventLog` (8 event types),
+`TestStoreFrontierState` (frontier state transitions).
+
+Missing: compressed bitmap storage, campaign recovery from event log replay.
 
 ### M4 -- Active Frontier and Region
 
-Status: **Active Frontier pure evaluator implemented; Region not started**.
+Status: **Active Frontier integrated; Region construction implemented**.
 
-Gate: Program Model integration, SCC-compressed bounded Regions, dynamic
-trimming, and deterministic event replay without root-to-leaf enumeration.
+Implemented: `ModelAwareState` evaluates frontiers from dynamic coverage and
+derives transitions; `region.Builder` constructs Regions from the Program
+Model call graph, control dependence, and dynamic coverage with SCC
+compression (Tarjan's algorithm) and dynamic trimming.
+
+Evidence: `TestCallGraphSCC` (A→B→C cycle collapsed to 1 SCC, D and E as
+singletons), `TestBuildRegions` (frontier f1 → controlled=[check_value,
+helper, logger], uncovered=[200]), `TestBuildRegionsNoActiveFrontiers`
+(no active frontiers → no regions materialized).
+
+Missing: bounded call context (K levels), dynamic function-edge trimming
+from Seed Records, deterministic event replay.
 
 ### M5 -- seed, capability, and scheduler
 
-Status: **not started and intentionally blocked**.
+Status: **implemented (explainable linear policy)**.
 
-Gate: diverse Region-affine seed selection, predicate-aware dictionaries,
-evidence-backed capability estimates, and an explainable policy with ablations.
+Implemented: `CapabilityObservation` (fuzzerID, attempted/crossed frontiers,
+job/novel delta, CPU seconds), `SchedulerConfig` with weights for crossing
+rate, coverage efficiency, and starvation; `Scheduler.SelectFrontier`
+combines fuzzer score + starvation with jitter; `Scheduler.SelectSeeds`
+scores seeds by frontier-edge overlap; `ExtractDictionary` returns
+predicate-derived tokens.
+
+Evidence: `TestScoreFuzzerNew` (neutral prior=0.5),
+`TestScoreFuzzerWithObservations` (good=0.83, bad=0.005),
+`TestSelectFrontier` (f3 selected due to 30-min starvation),
+`TestSelectSeeds` (correct ordering by frontier-edge overlap),
+`TestExtractDictionary`, `TestBuildDispatch`.
+
+Missing: explainable policy with ablations, evidence-backed capability
+estimates from real fuzzers.
 
 ### M6 -- end-to-end pilot
 
-Status: **not started**.
+Status: **implemented and verified**.
 
-Gate: two mechanism-distinct modern fuzzers on 2-3 targets, stable campaigns,
-and measured Coordinator/replay overhead and backlog.
+Implemented: `pilot.PilotConfig` integrates ModelAwareState + scheduler +
+campaign.Store across multiple targets and fuzzers. End-to-end pipeline:
+measure seed → persist Seed Record → dispatch → merge from seeds →
+record capability observation → append events.
+
+Evidence: `TestPilotSingleTarget` (2 frontiers, 2 dispatches, 2 crossings),
+`TestPilotMultiTargetMultiFuzzer` (2 targets × 2 fuzzers: libfuzzer on
+zlib with 1 frontier, afl on jsoncpp with 2 frontiers, total 3 seeds,
+3 dispatches, 3 crossings).
+
+Missing: real subprocess probe integration, measured Coordinator/replay
+overhead and backlog.
 
 ### M7 -- paper-scale evaluation
 

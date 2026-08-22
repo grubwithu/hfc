@@ -75,6 +75,10 @@ into the OSS-Fuzz builder and wraps `compile` inside the container. Wrapping the
 host-side `infra/helper.py` process would not observe compiler processes across
 the Docker boundary.
 
+The entrypoint invokes the CodeQL plumbing sequence `database init`,
+`trace-command`, and `finalize` explicitly. This publishes the in-progress
+database metadata before the traced OSS-Fuzz compile command runs.
+
 The entrypoint checks out the configured source revision before compiling. It
 refuses to overwrite an existing CodeQL database, so stale extraction data
 cannot be silently mixed into a new model.
@@ -148,6 +152,8 @@ the next persistence milestone.
 5. CodeQL databases are never overwritten implicitly.
 6. Ambiguous/unmapped frontiers remain observable but are not schedulable.
 7. A build manifest records both declared inputs and discovered artifact hashes.
+8. Project-image builds are non-interactive and use cached base images; refreshing
+   an OSS-Fuzz base image is an explicit operation that requires fresh evidence.
 
 ## Next implementation milestone
 
