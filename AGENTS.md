@@ -93,9 +93,11 @@ For Go-only V2 changes, run:
 ```bash
 make test-v2
 go vet ./cmd/orchestra-ossfuzz ./cmd/orchestra-coordinator \
+  ./cmd/orchestra-model-build \
   ./internal/artifact ./internal/bitmap ./internal/buildconfig \
-  ./internal/contracts ./internal/coordinator ./internal/frontier \
-  ./internal/ossfuzz ./internal/probe ./internal/programmodel ./internal/worker
+  ./internal/contracts ./internal/coordinator ./internal/factexport \
+  ./internal/frontier ./internal/modelbuilder ./internal/ossfuzz \
+  ./internal/probe ./internal/programmodel ./internal/worker
 make v2
 ```
 

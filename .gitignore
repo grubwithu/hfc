@@ -26,3 +26,7 @@ Orchestra/
 # V2 external tool checkouts and generated artifacts.
 third_party/oss-fuzz/
 tools/codeql/
+
+# CodeQL golden fixture temp files.
+codeql/orchestra-model/tests/golden/.codeql-db/
+codeql/orchestra-model/tests/golden/.results/
