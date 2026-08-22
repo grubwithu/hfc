@@ -30,3 +30,6 @@ tools/codeql/
 # CodeQL golden fixture temp files.
 codeql/orchestra-model/tests/golden/.codeql-db/
 codeql/orchestra-model/tests/golden/.results/
+
+# V2 pfuzzer build artifacts.
+orchestra-pfuzzer-build
