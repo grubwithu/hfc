@@ -108,8 +108,13 @@ failed/incomplete measurement requires explicit status and retry semantics;
 it must not create two successful authoritative measurements.
 
 The canonical probe, not the producing fuzzer's bitmap, supplies
-`edge_bitmap`. Function/frontier bitmaps are derived conveniences and must be
-reconstructible from the authoritative edge bitmap and Program Model.
+`edge_bitmap`. The canonical probe is `internal/probe/SubprocessProbe`,
+which runs the canonical binary (the one built by OSS-Fuzz + LLVM pass +
+pfuzzer linkage) once per `(model_id, seed_hash)`. pfuzzer-reported bitmaps
+are hints for dedup only (see §10); they are overwritten by the verified
+bitmap on first canonical replay. Function/frontier bitmaps are derived
+conveniences and must be reconstructible from the authoritative edge bitmap
+and Program Model.
 
 Persist at least:
 
@@ -124,27 +129,39 @@ Persist at least:
 
 The current JSON message types are in `internal/contracts`.
 
+### Process boundary
+
+Orchestra V2 operates in two processes:
+
+| Process | Role | Communicates via |
+|---|---|---|
+| pfuzzer (native C++) | Engine execution host: multi-engine fork coordination, corpus management, bitmap observation | HTTP/JSON client to Orchestra |
+| Orchestra V2 (Go server) | Passive HTTP analyzer: canonical probe verification, frontier recommendations, dictionary mining | HTTP/JSON server, sqlite3 CLI for persistence |
+
 ### Dispatch
 
-A dispatch records the Program Model and the global state version observed by
-the scheduler, plus Region/frontier, fuzzer, seeds, tokens, and budget. The
-Coordinator assigns `dispatch_state_version`; a worker must not invent it.
+pfuzzer issues `POST /v2/state` at startup to retrieve `model_id` and
+`dispatch_state_version`. Subsequent dispatch decisions are
+client-side (pfuzzer chooses seeds from `GET /v2/frontiers/active`
+recommendations). The Coordinator does not "dispatch" in the V1 sense;
+it records the global state version observed by the scheduler.
 
 ### Result
 
-A worker reports produced candidate hashes and execution statistics. It may
-report engine-local observations for diagnostics, but it is not authoritative
-for global novelty.
+pfuzzer reports candidate seeds via `POST /v2/corpus/add` and bitmap
+observations via `POST /v2/coverage/report`. These are hints.
 
-The current scaffold accepts `input_union_bitmap`, `output_union_bitmap`, and
-`crossed_frontier_ids` from the worker because it is a contract harness. The
-production path must construct canonical unions from persisted Seed Records
-and derive frontier transitions from the Program Model. It must not trust an
-engine-native bitmap or unverified worker-reported crossing.
+The current scaffold accepts `input_union_bitmap`, `output_union_bitmap`,
+and `crossed_frontier_ids` from pfuzzer because it is a contract harness.
+The production path constructs canonical unions from persisted Seed Records
+(verified via `SubprocessProbe`) and derives frontier transitions from the
+Program Model. It must not trust a pfuzzer-reported bitmap or unverified
+worker-reported crossing.
 
 ### Feedback formulas
 
-For job `j`:
+For job `j` (the canonical measurement triggered by `POST /v2/corpus/add`
+on first observation of `(model_id, seed_hash)`):
 
 ```text
 job_delta(j) = output_union(j) - input_union(j)
@@ -169,6 +186,11 @@ Keep all three. Do not use `job_delta` as a synonym for global novelty.
 Merge order may change which job receives `novel_delta`, but the final global
 coverage union must be order-independent. Event logs retain dispatch and merge
 versions so alternative attribution can be analyzed offline.
+
+**All three deltas are computed from the verified bitmap** (see §10), not
+from pfuzzer's reported bitmap. The reported bitmap is stored in
+`MemoryStore` as a hint for dedup, but frontier transitions and global
+state updates use only the canonical probe result.
 
 ## 6. Active Frontier contract
 
@@ -235,3 +257,80 @@ For an incompatible change:
 4. add round-trip and unknown-field tests;
 5. update this document and `ROADMAP.md`;
 6. never mix Program Models or events with incompatible versions silently.
+
+## 10. Pfuzzer trust boundary
+
+pfuzzer is the engine execution host. Its local bitmap observations are
+**hints**, not authority. The Orchestra server maintains the authoritative
+Program Model and Seed Records.
+
+All frontier state, coverage attribution, and scheduler recommendations
+must derive from:
+
+1. **Verified Seed Records** in `MemoryStore` (at-most-once per
+   `(model_id, seed_hash)`, populated by `SubprocessProbe.Measure`).
+2. **SubprocessProbe-measured edge bitmaps** (canonical binary run).
+3. **Program Model frontier definitions** and mapping status.
+
+A bitmap reported by pfuzzer via `POST /v2/corpus/add` is stored in
+`MemoryStore` as a **hint bitmap** for dedup. It is overwritten by the
+verified bitmap when the SubprocessProbe confirms it. If the SubprocessProbe
+fails or disagrees significantly (>5% divergence in covered-edge count),
+pfuzzer is notified via the `/v2/corpus/add` response to fall back to its
+local bitmap only for that seed (a flag in the response indicates
+verification status).
+
+Frontier evaluation (`bitmap.EdgeSet.Contains(edge_id)`) and bitmap union
+(`bitmap.EdgeSet.Union`) use **only verified bitmaps**. This binds the trust
+boundary: no path through pfuzzer ever directly contributes to online policy.
+
+The trust boundary is **mandatory**. Any code path that uses an unverified
+bitmap for frontier state updates, scheduler scoring, or coverage attribution
+is a regression and must be reverted.
+
+## 11. HTTP API versioning
+
+The HTTP API version is part of the URL path prefix. Breaking protocol
+changes increment the URL prefix; non-breaking additions (schema version
+bumps, new optional fields) are additive.
+
+| Prefix | Status | Notes |
+|---|---|---|
+| `/v1/*` | Deprecated | V1 pfuzzer client compatibility; retained 1 release cycle with `Deprecation: true` HTTP header |
+| `/v2/*` | Current | pfuzzer V2 client and future clients |
+
+Both HTTP path and pfuzzer-side client are version-locked. A V2 server
+refuses V1 client requests after the deprecation window closes. A V2 client
+refuses to connect to a V1 server.
+
+Endpoint-level versioning:
+- `/v2/health`, `/v2/state`: stable, additive changes only.
+- `/v2/frontiers/active`, `/v2/corpus/add`, `/v2/coverage/report`, `/v2/dictionary`:
+  may add fields; never remove or rename fields. Incompatible changes
+  introduce new endpoint paths.
+
+## 12. V2 performance contract
+
+| Operation | V1 complexity | V2 complexity | Where |
+|---|---|---|---|
+| Find unique coverage set across N seeds | O(N²) libFuzzer merge | O(K) bitmap union per seed | `bitmap.EdgeSet.Union()` |
+| Per-seed AST lookup of frontiers | O(N) tree-sitter per query | O(1) hash lookup | `bitmap.EdgeSet.Contains()` |
+| Re-measure already-seen seed | O(N²) (full corpus replay) | O(1) Store hit | `MemoryStore.Has()` |
+| SubprocessProbe canonical replay | N/A (used llvm-cov) | O(1) per seed | `SubprocessProbe.Measure()` |
+| Frontier evaluation per seed | O(N) | O(F) where F = exact frontiers | `frontier.Evaluate()` |
+| Scheduler recommendation | N/A | O(F log F) per request | `Scheduler.RecommendFrontiers()` |
+
+N = corpus size. K = new edges per seed (typically <1000). F = exact-mapped
+frontiers (currently 848 for zlib; never re-traverses AST).
+
+V2 forbids:
+- tree-sitter at runtime (no AST queries in any V2 package; `internal/analysis/`
+  is V1-only and not imported);
+- libFuzzer merge semantics anywhere (no "unique coverage set" computation;
+  bitmap union replaces it);
+- llvm-cov full-corpus replay (replaced by at-most-once canonical probe);
+- programmatic Region construction from root-to-leaf call paths
+  (replaced by SCC-compressed controlled subgraph from `control_dependence`).
+
+These are **structural** in V2's design, not optimization targets. There is
+no slow path through tree-sitter or libFuzzer merge that could regress.
