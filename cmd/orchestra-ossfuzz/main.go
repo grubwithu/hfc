@@ -114,6 +114,14 @@ func build(ctx context.Context, args []string) error {
 	if err := planner.VerifyCheckout(ctx); err != nil {
 		return err
 	}
+	// Build the prebuilt pfuzzer libFuzzer.a first; OSS-Fuzz containers
+	// link it via LIB_FUZZING_ENGINE=/opt/pfuzzer/libFuzzer.a (see T6 in
+	// docs/v2/ROADMAP.md). The build is a no-op if the artifact is
+	// already up-to-date.
+	if err := runPfuzzerBuild(ctx, planner.RepoRoot); err != nil {
+		return fmt.Errorf("build pfuzzer libFuzzer.a: %w", err)
+	}
+
 	executor := ossfuzz.Executor{Stdout: os.Stdout, Stderr: os.Stderr}
 	// Skip build_image if the Docker image already exists locally.
 	image := ossfuzz.ProjectImage(target.OSSFuzzProject)
@@ -372,6 +380,28 @@ echo "CXXFLAGS=${CXXFLAGS:-}"
 	hash := sha256.New()
 	hash.Write([]byte(output))
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// runPfuzzerBuild ensures the prebuilt pfuzzer libFuzzer.a exists before
+// OSS-Fuzz containers are launched. The build is incremental: a cached
+// artifact is reused. If the build fails, the error is returned to the
+// caller; we do not silently fall back to upstream libFuzzer because the
+// resulting binary would lose multi-engine fork coordination.
+func runPfuzzerBuild(ctx context.Context, repoRoot string) error {
+	pfuzzerA := filepath.Join(repoRoot, "build", "v2", "pfuzzer-build", "libfuzzer.a")
+	if _, err := os.Stat(pfuzzerA); err == nil {
+		// Already built; skip rebuild.
+		return nil
+	}
+	log.Printf("Building prebuilt pfuzzer libFuzzer.a ...")
+	cmd := exec.CommandContext(ctx, "go", "run",
+		filepath.Join(repoRoot, "cmd", "orchestra-pfuzzer-build"),
+		"-pfuzzer", filepath.Join(repoRoot, "pfuzzer"),
+		"-out", filepath.Dir(pfuzzerA),
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // dockerOutput runs a command in a Docker container and returns stdout.

@@ -100,6 +100,14 @@ func (p Planner) BuildProfile(target buildconfig.Target, profile buildconfig.Bui
 		"-e", "ORCHESTRA_PROFILE=engine",
 		"-e", "ORCHESTRA_PRIMARY_SOURCE_DIR=" + target.PrimarySourceDir,
 		"-e", "ORCHESTRA_SOURCE_REVISION=" + target.SourceRevision,
+		// Mount the prebuilt pfuzzer libFuzzer.a and tell the entrypoint
+		// to use it instead of upstream libFuzzer's -fsanitize=fuzzer. The
+		// mount path is the repo root (already at /opt/orchestra), so we
+		// put libFuzzer.a under the repo's pfuzzer-hfc-patch/ tree; the
+		// container sees it at
+		//   /opt/orchestra/pfuzzer-hfc-patch/libFuzzer.a
+		"-v", filepath.Join(root, "pfuzzer-hfc-patch") + ":/opt/orchestra/pfuzzer-hfc-patch:ro",
+		"-e", "ORCHESTRA_LIBFUZZER_A=/opt/orchestra/pfuzzer-hfc-patch/libFuzzer.a",
 		"-v", paths.Out + ":/out",
 		"-v", paths.Work + ":/work",
 		"-v", root + ":/opt/orchestra:ro",
