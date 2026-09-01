@@ -59,6 +59,18 @@ for candidate in /opt/codeql/codeql /opt/codeql/codeql/codeql; do
     break
   fi
 done
+
+# Mounted read-only from the repo's pfuzzer-hfc-patch/ tree at
+# /opt/orchestra/pfuzzer-hfc-patch (see internal/ossfuzz/plan.go).
+: "${ORCHESTRA_LIBFUZZER_A:=/opt/orchestra/pfuzzer-hfc-patch/libFuzzer.a}"
+
+# /usr/lib/libFuzzingEngine.a symlink: clang's -fsanitize=fuzzer flag auto-links
+# this path during the link step. The prebuilt pfuzzer libFuzzer.a replaces
+# upstream libFuzzer.a and is bind-mounted at /opt/orchestra/pfuzzer-hfc-patch,
+# so symlink it in for clang to find.
+mkdir -p /usr/lib
+ln -sf "${ORCHESTRA_LIBFUZZER_A}" /usr/lib/libFuzzingEngine.a
+ln -sf "${ORCHESTRA_LIBFUZZER_A}" /usr/lib/x86_64-linux-gnu/libFuzzingEngine.a
 if [[ -z "${CODEQL_BIN}" ]]; then
   echo "CodeQL executable not found in mounted bundle" >&2
   exit 2
@@ -107,10 +119,15 @@ fi
 #   ./binary -fork=N -fuzzers=afl,libfuzzer /corpus (pfuzzer multi-engine fork)
 # via a single binary. See docs/v2/DESIGN.md §4.1a.
 #
-# ORCHESTRA_LIBFUZZER_A, when set, replaces the -fsanitize=fuzzer default.
-# Mounted read-only from the repo's pfuzzer-hfc-patch/ tree at
-# /opt/orchestra/pfuzzer-hfc-patch (see internal/ossfuzz/plan.go).
-: "${ORCHESTRA_LIBFUZZER_A:=/opt/orchestra/pfuzzer-hfc-patch/libFuzzer.a}"
+# ORCHESTRA_LIBFUZZER_LIBCXX appends an explicit C++ runtime library to the
+# link line. Without it, container clang (which targets libc++ by default)
+# finds the pfuzzer libFuzzer.a symbols referencing std::__cxx11::basic_string
+# but never pulls in libstdc++.so.6 for the resolution. The container
+# has /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (verified) -- we just need
+# to tell the linker to use it. Override the default "-lc++" with
+# "-lstdc++" because our prebuilt libFuzzer.a was built with libstdc++.
+# This complements ORCHESTRA_LIBFUZZER_A which sets the .a path.
+: "${ORCHESTRA_LIBFUZZER_LIBCXX:=-lstdc++}"
 
 # The OSS-Fuzz Dockerfile sets WORKDIR to the source checkout (e.g. /src/zlib).
 # compile invokes build.sh in the current directory. CodeQL's preload_tracer
@@ -126,12 +143,16 @@ fi
   --threads=0 \
   "${ORCHESTRA_CODEQL_DB}" \
   -- bash -c "cd ${ORCHESTRA_PRIMARY_SOURCE_DIR} && \
-    export LIB_FUZZING_ENGINE='${ORCHESTRA_LIBFUZZER_A}' && \
+    export LIB_FUZZING_ENGINE='${ORCHESTRA_LIBFUZZER_A} ${ORCHESTRA_LIBFUZZER_LIBCXX}' && export LDFLAGS='-stdlib=libstdc++ -lpthread' && \
+    export CXXFLAGS_EXTRA='${ORCHESTRA_LIBFUZZER_LIBCXX}' && \
     if [ -f \$SRC/build.sh ]; then \
       sed -i 's/ninja -v -j\$(nproc) -C \$build test\/fuzzing\/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer/for t in hb-shape-fuzzer hb-raster-fuzzer hb-vector-fuzzer hb-gpu-fuzzer hb-subset-fuzzer hb-repacker-fuzzer; do ninja -v -j\$(nproc) -C \$build test\/fuzzing\/\$t 2>\/dev\/null \\|\\| true; done/' \$SRC/build.sh 2>/dev/null; \
       sed -i 's/mv \$build\/test\/fuzzing\/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer \$OUT\//for t in hb-shape-fuzzer hb-raster-fuzzer hb-vector-fuzzer hb-gpu-fuzzer hb-subset-fuzzer hb-repacker-fuzzer; do mv \$build\/test\/fuzzing\/\$t \$OUT\/ 2>\/dev\/null \\|\\| true; done/' \$SRC/build.sh 2>/dev/null; \
     fi && \
-    sed -i 's|^export LIB_FUZZING_ENGINE=\"-fsanitize=fuzzer\"$|export LIB_FUZZING_ENGINE=\"${ORCHESTRA_LIBFUZZER_A}\"|' /usr/local/bin/compile_libfuzzer && \
+    echo '#!/bin/bash -eu' > /usr/local/bin/compile_libfuzzer && \
+    echo 'export LIB_FUZZING_ENGINE="${ORCHESTRA_LIBFUZZER_A} ${ORCHESTRA_LIBFUZZER_LIBCXX}"' >> /usr/local/bin/compile_libfuzzer && \
+    echo 'echo -n "Compiling libFuzzer to \$LIB_FUZZING_ENGINE... "' >> /usr/local/bin/compile_libfuzzer && \
+    chmod +x /usr/local/bin/compile_libfuzzer && \
     exec /usr/local/bin/compile"
 
 exec "${CODEQL_BIN}" database finalize \

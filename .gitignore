@@ -33,3 +33,6 @@ codeql/orchestra-model/tests/golden/.results/
 
 # V2 pfuzzer build artifacts.
 orchestra-pfuzzer-build
+
+# pfuzzer dependencies restored by its nested submodules.
+pfuzzer-hfc-patch/third-party/
